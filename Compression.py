@@ -1,229 +1,186 @@
-import plotly.graph_objects as go
 import numpy as np
-
-
-
-# ---------------------------------- AObject3D ---------------------------------
-import random
 import copy
-
-class AObject3D:
-    def __init__(self, objRef, name=None):
-        self.name = name if name is not None else "Unknown"
-        self.model_ref = objRef
-        self.model_lods = []
-        self.tranformations = []
-        self.nb_lod = 0
-
-    def get_last_lod(self):
-        return self.model_ref if len(self.model_lods) == 0 else self.model_lods[-1]
-
-    def compress(self, compression_ratio=0.1, nb_compressions=1):
-        """
-        Perform multiple squeeze compression passes.
-        compression_ratio: fraction of vertices to remove per pass (0 < ratio < 1)
-        nb_compressions: number of compression passes
-        """
-        for _ in range(nb_compressions):
-            last_lod = self.get_last_lod()
-            obj, transfo = self.squeeze_compression(last_lod, compression_ratio)
-            self.tranformations.append(transfo)
-            self.model_lods.append(obj)
-        return self.model_lods, self.tranformations
+import plotly.graph_objects as go
+from MeshObjects import *
 
 
-    def squeeze_compression(self, Object3D, compression_ratio=0.1):
-        new_obj = copy.deepcopy(Object3D)
+def build_adjacency(obj):
+    adjacency = {v: [] for v in obj.vertices}
+    for f in obj.faces:
+        for (a, b, c) in [(f.v1, f.v2, f.v3), (f.v2, f.v3, f.v1), (f.v3, f.v1, f.v2)]:
+            if b not in adjacency[a]:
+                adjacency[a].append(b)
+            if c not in adjacency[a]:
+                adjacency[a].append(c)
+    return adjacency
+
+def build_spanning_tree(adjacency, root):
+    parent = {v: None for v in adjacency}
+    visited = {root}
+    stack = [root]
+    while stack:
+        v = stack.pop()
+        for n in adjacency[v]:
+            if n not in visited:
+                visited.add(n)
+                parent[n] = v
+                stack.append(n)
+    return parent
 
 
-        target_vertex_count = max(3, int(len(new_obj.vertices) * (1 - compression_ratio)))
-        faces = new_obj.faces
-        vertices = new_obj.vertices
-        transformations = []
+def edge_length(v1, v2):
+    return np.linalg.norm(np.array(v1.as_tuple()) - np.array(v2.as_tuple()))
 
-        def edge_length(edge):
-            p1 = np.array(edge.v1.as_tuple())
-            p2 = np.array(edge.v2.as_tuple())
-            return np.linalg.norm(p1 - p2)
 
-        def all_edges():
-            edges = set()
-            for f in faces:
-                edges.add(Edge(f.v1, f.v2))
-                edges.add(Edge(f.v2, f.v3))
-                edges.add(Edge(f.v3, f.v1))
-            return list(edges)
+def is_collapse_valid(v1, v2, adjacency, collapsed_vertices):
+    if v1 in collapsed_vertices or v2 in collapsed_vertices:
+        return False
+    common_neighbors = set(adjacency[v1]).intersection(adjacency[v2])
+    if len(common_neighbors) < 1:
+        return False
+    #for w in common_neighbors:
+    #    if len(set(adjacency[w]).intersection({v1, v2})) >= 2:
+    #        return False
+    return True
+
+
+def select_edge_collapses(vertices, adjacency, nb_collapses):
+    edges = []
+    for v in vertices:
+        for n in adjacency[v]:
+            if v != n and (n, v) not in edges:
+                edges.append((v, n))
+    edges_with_cost = [(e, edge_length(*e)) for e in edges]
+    edges_with_cost.sort(key=lambda x: x[1])
+
+    selected = []
+    collapsed_vertices = set()
+    for (v1, v2), _ in edges_with_cost:
+        if is_collapse_valid(v1, v2, adjacency, collapsed_vertices):
+            selected.append((v1, v2))
+            collapsed_vertices.update([v1, v2])
+        if len(selected) >= nb_collapses:
+            break
+    return selected
+
+
+def apply_collapse(v1, v2, faces, adjacency, vertices):
+    faces_to_remove = []
+    cut_neighbors = []
+    for f in faces:
+        if v2 in [f.v1, f.v2, f.v3]:
+            # on repère d’abord le 3e sommet de la face AVANT de la modifier
+            other_verts = [f.v1, f.v2, f.v3]
+            # sommet de la face qui n'est ni v1 ni v2
+            w = [vv for vv in other_verts if vv not in (v1, v2)]
+            if len(w) == 1:
+                cut_neighbors.append(w[0])
+
+            # puis on remplace v2 par v1
+            if f.v1 == v2: f.v1 = v1
+            if f.v2 == v2: f.v2 = v1
+            if f.v3 == v2: f.v3 = v1
+
+            if len({f.v1, f.v2, f.v3}) < 3:
+                faces_to_remove.append(f)
+
+    for f in faces_to_remove:
+        faces.remove(f)
+
+    for neighbor in list(adjacency[v2]):
+        if neighbor != v1:
+            if v1 not in adjacency[neighbor]:
+                adjacency[neighbor].append(v1)
+            if neighbor not in adjacency[v1]:
+                adjacency[v1].append(neighbor)
+        if v2 in adjacency[neighbor]:
+            adjacency[neighbor].remove(v2)
+    if v2 in adjacency:
+        del adjacency[v2]
+    if v2 in vertices:
+        vertices.remove(v2)
         
+    cut_neighbors = list(dict.fromkeys(cut_neighbors))[:2]
+    return cut_neighbors
 
-        edges = all_edges()
-        print(edges)
-        # Trier la liste
-        sorted_edge = edges.sort(key=lambda e: edge_length(e))
-        print(sorted_edge)
+def encode_cut_indices(record, adjacency, parent):
+    vs = record["v_split"]
+    neighbors = adjacency[vs]
+    d = len(neighbors)
 
-        edge_index = 0
-        # boucle de collapses simples
-        while len(vertices) > target_vertex_count:
+    # point de départ = edge (vsplit -> parent)
+    if parent[vs] is not None and parent[vs] in neighbors:
+        start = neighbors.index(parent[vs])
+    else:
+        start = 0
 
-            collapse_edge = sorted_edge[edge_index];
-            v1, v2 = collapse_edge
+    cut_idxs = []
+    for w in record["cut_neighbors"]:
+        if w in neighbors:
+            raw_index = neighbors.index(w)
+            # décalage pour que le 0 corresponde à l’arête vers le parent
+            rel_index = (raw_index - start) % d
+            cut_idxs.append(rel_index)
+    # sécurité : on complète ou on tronque
+    if len(cut_idxs) < 2:
+        # on met -1 pour dire "pas de deuxième arête"
+        cut_idxs += [-1] * (2 - len(cut_idxs))
+    else:
+        cut_idxs = cut_idxs[:2]
 
-            #  calculer la prédiction du sommet supprimé (par exemple barycentre local)
-            connected_faces = [f for f in faces if v2 in [f.v1, f.v2, f.v3]]
-            if connected_faces:
-                bary = np.mean([np.array([(f.v1.x + f.v2.x + f.v3.x)/3,
-                                            (f.v1.y + f.v2.y + f.v3.y)/3,
-                                            (f.v1.z + f.v2.z + f.v3.z)/3])
-                                for f in connected_faces], axis=0)
-            else:
-                bary = np.array(v1.as_tuple())
-
-            v2_pos = np.array(v2.as_tuple())
-            v_est = bary - v2_pos   # erreur prédictive (petite normalement)
-
-            v_split = v1
-            v_del = v2
-
-            faces_to_remove = []
-            for f in faces:
-                # remplacer del_v par keep_v
-                if f.v1 is v_del:
-                    f.v1 = v_split
-                if f.v2 is v_del:
-                    f.v2 = v_split
-                if f.v3 is v_del:
-                    f.v3 = v_split
-
-                # si la face est devenue dégénérée (2 mêmes sommets), on la vire
-                if len({f.v1, f.v2, f.v3}) < 3:
-                    faces_to_remove.append(f)
-
-            # supprimer les faces dégénérées
-            for f in faces_to_remove:
-                faces.remove(f)
-
-            # 4. retirer v_del de la liste des vertices
-            if v_del in vertices:
-                vertices.remove(v_del)
-
-            # 5. enregistrer la transformation pour un éventuel vsplit
-            transformations.append({
-                "V_split" : v_split,
-                "V_est" : v_est,
-                "Collapse_edge" : collapse_edge
-            })
-
-            # mettre à jour les infos de l'objet
-            new_obj.vertices = vertices
-            new_obj.faces = faces
-            new_obj.nb_vertices = len(vertices)
-            new_obj.nb_faces = len(faces)
-            edge_index += 1
-
-        transfo = {
-            "compression_ratio": compression_ratio,
-            "transformations": transformations,
-            "removed_vertices": len(Object3D.vertices) - len(new_obj.vertices),
-        }
-        return new_obj, transfo
+    record["cut_indices"] = cut_idxs
+    # on peut jeter la version en sommets ensuite
+    # del record["cut_neighbors"]
 
 
+def squeeze_compression(Object3D, compression_ratio=0.1):
+    new_obj = copy.deepcopy(Object3D)
+    vertices, faces = new_obj.vertices, new_obj.faces
+    adjacency = build_adjacency(new_obj)
+    target_vertex_count = int(len(vertices) * (1 - compression_ratio))
+    nb_collapses = len(vertices) - target_vertex_count
 
-    def show_lods(self):
-        for idx, lod in enumerate(self.model_lods):
-            lod.Show(f'LOD {idx + 1} of {self.name}')
+    collapse_edges = select_edge_collapses(vertices, adjacency, nb_collapses)
+    collapse_info = []
 
-    def show_last_lod(self):
-        self.get_last_lod().Show(f'Last LOD of {self.name}')
-        
-  
+    for (v1, v2) in collapse_edges:
+        connected_faces = [f for f in faces if v2 in (f.v1, f.v2, f.v3)]
+        if connected_faces:
+            bary = np.mean([
+                np.array([(f.v1.x + f.v2.x + f.v3.x) / 3,
+                        (f.v1.y + f.v2.y + f.v3.y) / 3,
+                        (f.v1.z + f.v2.z + f.v3.z) / 3])
+                for f in connected_faces
+            ], axis=0)
+        else:
+            bary = np.array(v1.as_tuple())  # fallback : v1 lui-même
+
+        v2_pos = np.array(v2.as_tuple())
+        v1_pos = np.array(v1.as_tuple())
+
+        vdisp = v2_pos - v1_pos       # déplacement brut
+        v_pred = bary - v1_pos        # prédiction barycentrique
+        v_est = vdisp - v_pred        # erreur (celle qu'on stocke)
+
+        cut_neighbors = apply_collapse(v1, v2, faces, adjacency, vertices)
+        collapse_info.append({"v_split": v1, 
+                              "v_est": v_est, 
+                              "cut_neighbors": cut_neighbors,
+                              })
+
+    new_obj.vertices = [v for v in vertices if v in adjacency]
+    new_obj.nb_vertices = len(new_obj.vertices)
+    new_obj.nb_faces = len(new_obj.faces)
 
 
+    root = next(iter(adjacency.keys()))
+    parent = build_spanning_tree(adjacency, root)
 
-# ---------------------------------- Object3D ----------------------------------
-class Object3D :
+    for rec in collapse_info:
+        encode_cut_indices(rec, adjacency, parent)
 
-    def __init__(self, objFile, name = None) :
-        self.name = name if name is not None else "Unknown"
-        vertices = []
-        faces = []
+    for v, neighs in list(adjacency.items()):
+        adjacency[v] = [n for n in neighs if n in adjacency]
 
-        for line in objFile:
-            if line.startswith('v '):  # vertex
-                parts = line.strip().split()
-                vertices.append(Vertex(float(parts[1]), float(parts[2]), float(parts[3])))
-            elif line.startswith('f '):  # face
-                parts = line.strip().split()
+    return new_obj, adjacency, collapse_info
 
-                face = Face(*[vertices[int(p) - 1] for p in parts[1:]])
-                faces.append(face)
-        self.vertices = vertices
-        self.faces = faces
-        self.nb_faces = len(faces)
-        self.nb_vertices = len(vertices)
-
-    def Show(self,title = None) :
-        if title is None : title = f"3D Object : {self.name}"
-        x, y, z = zip(*[v.as_tuple() for v in self.vertices])
-
-        # Map vertices to indices for faces
-        vertex_to_index = {v: idx for idx, v in enumerate(self.vertices)}
-        i = [vertex_to_index[f.v1] for f in self.faces]
-        j = [vertex_to_index[f.v2] for f in self.faces]
-        k = [vertex_to_index[f.v3] for f in self.faces]
-
-        fig = go.Figure(
-            data=[
-                go.Mesh3d(
-                    x=x, y=y, z=z,
-                    i=i, j=j, k=k,
-                    color='#9575CD',
-                    opacity=1.0,
-                    flatshading=True
-                )
-            ],
-            layout=go.Layout( 
-                scene=dict(
-                    xaxis=dict(visible=False),
-                    yaxis=dict(visible=False),
-                    zaxis=dict(visible=False)
-                ),
-                title=title,
-                annotations=[
-                    dict(
-                        showarrow=False,
-                        text=f"Vertices: {self.nb_vertices} | Faces: {self.nb_faces}",
-                        xref="paper",
-                        yref="paper",
-                        x=0,
-                        y=0
-                    )
-                ]
-            )
-            
-            
-
-        )
-        fig.show()
-
-# ----------------------------------- Vertex -----------------------------------
-class Vertex :
-    def __init__(self,x,y,z) :
-        self.x = x
-        self.y = y
-        self.z = z
-
-    def as_tuple(self) :
-        return (self.x,self.y,self.z)
-
-# ------------------------------------ Face ------------------------------------
-class Face :
-    def __init__(self,v1,v2,v3) :
-            self.v1 = v1
-            self.v2 = v2
-            self.v3 = v3
-
-class Edge :
-    def __init__(self, v1, v2):
-        self.v1 = v1
-        self.v2 = v2
