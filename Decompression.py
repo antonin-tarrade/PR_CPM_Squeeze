@@ -1,5 +1,6 @@
 import numpy as np
-from MeshObjects import *
+import copy
+from utils import *
 
 def apply_vertex_split(collapse_info, adjacency, faces, vertices):
     vsplit = collapse_info['v_split']
@@ -85,7 +86,7 @@ def dedup_vertices_from_faces(faces, eps=1e-6):
 
     return unique_vertices
 
-def decompress(Mi_minus_1, adjacency, infos):
+def squeeze_decompression(Mi_minus_1, adjacency, infos):
     new_obj = copy.deepcopy(Mi_minus_1)
     faces = new_obj.faces
     vertices = new_obj.vertices
@@ -102,7 +103,6 @@ def decompress(Mi_minus_1, adjacency, infos):
     # reconstruire la liste de sommets utilisée par les faces
     unique_vertices = dedup_vertices_from_faces(faces, eps=1e-6)
     
-
     new_obj.vertices = unique_vertices
     new_obj.nb_vertices = len(unique_vertices)
     new_obj.nb_faces = len(faces)
