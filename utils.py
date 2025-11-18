@@ -63,6 +63,6 @@ def mean_position(vertices):
 
 def get_vertex_from_array(vertices, arr):
     for v in vertices:
-        if np.allclose(v.as_array(), arr):
+        if np.allclose(v.as_array(), arr, atol=1e-7):
             return v
     return None

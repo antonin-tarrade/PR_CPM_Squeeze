@@ -15,6 +15,8 @@ def is_collapse_valid(v1, v2, adjacency, collapsed_vertices):
     common_neighbors = set(adjacency[v1]).intersection(adjacency[v2])
     if len(common_neighbors) != 2:
         return False
+    if any(v in collapsed_vertices for v in (adjacency[v1] + adjacency[v2])):
+        return False
     return True
 
 
