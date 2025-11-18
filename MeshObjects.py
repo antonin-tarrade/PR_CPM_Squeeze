@@ -30,6 +30,10 @@ class Object3D:
         adjacency = {v: [] for v in self.vertices}
         for f in self.faces:
             for (a, b, c) in [(f.v1, f.v2, f.v3), (f.v2, f.v3, f.v1), (f.v3, f.v1, f.v2)]:
+                if a not in adjacency:
+                    print(f"Warning: Vertex {a.as_tuple()} not in adjacency, adding it.")
+                    adjacency[a] = []
+                    self.add_vertex(a)
                 if b not in adjacency[a]:
                     adjacency[a].append(b)
                 if c not in adjacency[a]:
@@ -103,15 +107,15 @@ class Object3D:
     def add_face(self, face):
         self.faces.append(face)
         self.nb_faces += 1
-        # Actualiser l'adjacency
-        self.adjacency = self.build_adjacency()
+        # # Actualiser l'adjacency
+        # self.adjacency = self.build_adjacency()
     
     def del_face(self, face):
         if face in self.faces:
             self.faces.remove(face)
             self.nb_faces -= 1
-            # Actualiser l'adjacency
-            self.adjacency = self.build_adjacency()
+            # # Actualiser l'adjacency
+            # self.adjacency = self.build_adjacency()
 
 
 # Classe pour gérer les LODs 
@@ -132,10 +136,10 @@ class AObject3D:
     def compress(self, compression_ratio=0.1, nb_compressions=1):
         for _ in range(nb_compressions):
             last_lod = self.get_last_lod()
-            obj, adjacency, transfo = squeeze_compression(last_lod, compression_ratio)
+            obj,transfo = squeeze_compression(last_lod, compression_ratio)
             self.collapse_info.append(transfo)
             self.model_lods.append(obj)
-            self.adjacency_ref.append(adjacency)
+            self.adjacency_ref.append(obj.build_adjacency())
         return self.model_lods, self.collapse_info
     
     def decompress(self, nb_decompressions = None):

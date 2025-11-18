@@ -7,6 +7,9 @@ class Vertex:
     def as_tuple(self):
         return (self.x, self.y, self.z)
     
+    def as_array(self):
+        return np.array(self.as_tuple())
+    
     # hash and eq to use Vertex as dict keys
     def __hash__(self):
         return hash((self.x, self.y, self.z))
@@ -56,3 +59,10 @@ def mean_position(vertices):
     coords = np.array([v.as_tuple() for v in vertices])
     mean_coords = np.mean(coords, axis=0)
     return Vertex(*mean_coords)
+
+
+def get_vertex_from_array(vertices, arr):
+    for v in vertices:
+        if np.allclose(v.as_array(), arr):
+            return v
+    return None

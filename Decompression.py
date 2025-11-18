@@ -4,12 +4,8 @@ from utils import *
 
 
 def squeeze_decompression(Mi_minus_1, infos):
-    print("Decompression started...")
     Mi = copy.deepcopy(Mi_minus_1)
-    i = 0
     for info in reversed(infos):
-        i += 1
-        print(i)
         apply_vertex_split(Mi, info)
         
     return Mi
@@ -20,26 +16,27 @@ def apply_vertex_split(Model, collapse_info):
     vertices = Model.vertices
     faces = Model.faces
     adjacency = Model.adjacency
-    vsplit = collapse_info['v_split']
-    w1, w2 = collapse_info['w12']
+    vsplit = get_vertex_from_array(vertices,collapse_info['v_split'])
+    w12_tuples = collapse_info['w12']
+    
+    # Look up w1 and w2 in the current mesh by their coordinates
+    w1 = get_vertex_from_array(vertices, w12_tuples[0])
+    w2 = get_vertex_from_array(vertices, w12_tuples[1])
+    
+    if w1 is None or w2 is None:
+        raise ValueError(f"Could not find w1 or w2 in vertices. w12={w12_tuples}")
+    
     v_err = np.array(collapse_info['v_err'])
-    neighbors_between = collapse_info['neighbors_between']
-
-
-    # Retirer les faces connectant vsplit à ses voisins entre w1 et w2
-    faces_to_remove = []
-    for f in faces:
-        if vsplit in (f.v1, f.v2, f.v3):
-            # Dans les facede v1
-            other_vertices = [v for v in (f.v1, f.v2, f.v3) if v != vsplit]
-            if all(v in neighbors_between for v in other_vertices):
-                faces_to_remove.append(f)
-    for f in faces_to_remove:
-        Model.del_face(f)
+    neighbors_between_array = collapse_info['neighbors_between']
+    neighbors_between = set()
+    for arr in neighbors_between_array:
+        v = get_vertex_from_array(vertices, arr)
+        if v is not None:
+            neighbors_between.add(v)
 
     # Calcul prédictif pour retrouver la position de vnew
     bary = mean_position(list(neighbors_between) + [vsplit])
-    bary = np.array(bary.as_tuple())
+    bary = bary.as_array()
 
     # Ajout du nouveau sommet
     new_pos = bary + v_err
@@ -49,43 +46,28 @@ def apply_vertex_split(Model, collapse_info):
     # Recréer les 2 faces supprimées pendant la compression
     f1 = Face(vsplit, w1, vnew)
     f2 = Face(vsplit, vnew, w2)
+
     Model.add_face(f1)
     Model.add_face(f2)
 
-    # Ordonner neighbors_between de w1 à w2
-    ordered_neighbors_between = [w1]
-    for _ in range(len(neighbors_between)):
-        voisins_last = Model.adjacency[ordered_neighbors_between[-1]]
-        next_neighbors = [v for v in voisins_last if v in neighbors_between and v not in ordered_neighbors_between]
-        ordered_neighbors_between.append(next_neighbors[0])
+    Model.adjacency = Model.build_adjacency()
 
-    # trouver les paires de voisins dans neighbors_between_ordered
-    neighbor_pairs = []
-    nb_list = list(ordered_neighbors_between)
-    for idx in range(len(nb_list) - 1):
-        neighbor_pairs.append((nb_list[idx], nb_list[idx + 1]))
+    # Mettre a jour les faces connectant vsplit à ses voisins entre w1 et w2
+    for f in faces:
+        if vsplit in [f.v1, f.v2, f.v3]:
+            other_vertices = [v for v in [f.v1, f.v2, f.v3] if v != vsplit]
+            if all(v in neighbors_between for v in other_vertices):
+                # Mettre à jour la face pour inclure vnew
+                if f.v1 == vsplit:
+                    f.v1 = vnew
+                elif f.v2 == vsplit:
+                    f.v2 = vnew
+                elif f.v3 == vsplit:
+                    f.v3 = vnew
+            
 
-    # Ajouter les faces entre vnew et les paires de points
-    for v_a, v_b in neighbor_pairs:
-        Model.add_face(Face(vnew, v_a, v_b))
-
-
-
-
-
-
-    # p1 = vnew
-    # p2 = w1
-    # print(neighbors_between)
-    # print(len(neighbors_between))
-    # for _ in range(len(neighbors_between)-1):
-    #     print(adjacency[p2])
-    #     print(neighbors_between)
-    #     p3 = [v for v in neighbors_between if v in adjacency[p2]][0]
-    #     neighbors_between.remove(p3)
-    #     f = Face(p1, p2, p3)
-    #     Model.add_face(f)
-    #     p2 = p3
+    # Mettre à jour l'adjacency
+    Model.adjacency = Model.build_adjacency()
 
 
 
