@@ -1,8 +1,21 @@
+import numpy as np
+
+
 class Vertex:
     def __init__(self, x, y, z):
         self.x, self.y, self.z = x, y, z
     def as_tuple(self):
         return (self.x, self.y, self.z)
+    
+    # hash and eq to use Vertex as dict keys
+    def __hash__(self):
+        return hash((self.x, self.y, self.z))
+    
+    # def __str__(self):
+    #     return f"Vertex({self.x}, {self.y}, {self.z})"
+    
+    def __eq__(self, other):
+        return (self.x, self.y, self.z) == (other.x, other.y, other.z)
 
 
 
@@ -27,3 +40,19 @@ def adjust_hex_color(hex_color, factor):
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
+def get_values_between(values, id_min, id_max):
+    if id_max == id_min:
+        return []
+
+    if id_min < id_max:
+        return values[id_min + 1:id_max]
+
+    # Cas circulaire
+    return values[id_min + 1:] + values[:id_max]
+
+
+
+def mean_position(vertices):
+    coords = np.array([v.as_tuple() for v in vertices])
+    mean_coords = np.mean(coords, axis=0)
+    return Vertex(*mean_coords)

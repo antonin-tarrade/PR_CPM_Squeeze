@@ -2,17 +2,8 @@ import numpy as np
 import copy
 import plotly.graph_objects as go
 from MeshObjects import *
+from utils import *
 
-
-def build_adjacency(obj):
-    adjacency = {v: [] for v in obj.vertices}
-    for f in obj.faces:
-        for (a, b, c) in [(f.v1, f.v2, f.v3), (f.v2, f.v3, f.v1), (f.v3, f.v1, f.v2)]:
-            if b not in adjacency[a]:
-                adjacency[a].append(b)
-            if c not in adjacency[a]:
-                adjacency[a].append(c)
-    return adjacency
 
 def build_spanning_tree(adjacency, root):
     parent = {v: None for v in adjacency}
@@ -64,44 +55,38 @@ def select_edge_collapses(vertices, adjacency, nb_collapses):
     return selected
 
 
-def apply_collapse(v1, v2, faces, adjacency, vertices):
+def apply_collapse(v1, v2, obj):
+    faces = obj.faces
+    adjacency = obj.adjacency
+    vertices = obj.vertices
     faces_to_remove = []
-    cut_neighbors = []
+    w12 = []
+    neibors_between = set()
     for f in faces:
         if v2 in [f.v1, f.v2, f.v3]:
             # on repère d’abord le 3e sommet de la face AVANT de la modifier
             other_verts = [f.v1, f.v2, f.v3]
             # sommet de la face qui n'est ni v1 ni v2
             w = [vv for vv in other_verts if vv not in (v1, v2)]
+            # cas face avec v1 et v2
             if len(w) == 1:
-                cut_neighbors.append(w[0])
-
-            # puis on remplace v2 par v1
-            if f.v1 == v2: f.v1 = v1
-            if f.v2 == v2: f.v2 = v1
-            if f.v3 == v2: f.v3 = v1
-
-            if len({f.v1, f.v2, f.v3}) < 3:
+                w12.append(w[0])
                 faces_to_remove.append(f)
+            # cas face avec seulement v2
+            elif len(w) == 2:
+                if f.v1 == v2: f.v1 = v1
+                if f.v2 == v2: f.v2 = v1
+                if f.v3 == v2: f.v3 = v1
 
+                neibors_between.update(w)
+                
     for f in faces_to_remove:
-        faces.remove(f)
+        obj.del_face(f)
 
-    for neighbor in list(adjacency[v2]):
-        if neighbor != v1:
-            if v1 not in adjacency[neighbor]:
-                adjacency[neighbor].append(v1)
-            if neighbor not in adjacency[v1]:
-                adjacency[v1].append(neighbor)
-        if v2 in adjacency[neighbor]:
-            adjacency[neighbor].remove(v2)
-    if v2 in adjacency:
-        del adjacency[v2]
-    if v2 in vertices:
-        vertices.remove(v2)
-        
-    cut_neighbors = list(dict.fromkeys(cut_neighbors))[:2]
-    return cut_neighbors
+    obj.del_vertex(v2)
+
+    return w12, neibors_between
+
 
 def encode_cut_indices(record, adjacency, parent):
     vs = record["v_split"]
@@ -135,8 +120,7 @@ def encode_cut_indices(record, adjacency, parent):
 
 def squeeze_compression(Object3D, compression_ratio=0.1):
     new_obj = copy.deepcopy(Object3D)
-    vertices, faces = new_obj.vertices, new_obj.faces
-    adjacency = build_adjacency(new_obj)
+    vertices, faces, adjacency = new_obj.vertices, new_obj.faces, new_obj.adjacency
     target_vertex_count = int(len(vertices) * (1 - compression_ratio))
     nb_collapses = len(vertices) - target_vertex_count
 
@@ -144,43 +128,22 @@ def squeeze_compression(Object3D, compression_ratio=0.1):
     collapse_info = []
 
     for (v1, v2) in collapse_edges:
-        connected_faces = [f for f in faces if v2 in (f.v1, f.v2, f.v3)]
-        if connected_faces:
-            bary = np.mean([
-                np.array([(f.v1.x + f.v2.x + f.v3.x) / 3,
-                        (f.v1.y + f.v2.y + f.v3.y) / 3,
-                        (f.v1.z + f.v2.z + f.v3.z) / 3])
-                for f in connected_faces
-            ], axis=0)
-        else:
-            bary = np.array(v1.as_tuple())  # fallback : v1 lui-même
-
         v2_pos = np.array(v2.as_tuple())
-        v1_pos = np.array(v1.as_tuple())
 
-        vdisp = v2_pos - v1_pos       # déplacement brut
-        v_pred = bary - v1_pos        # prédiction barycentrique
-        v_est = vdisp - v_pred        # erreur (celle qu'on stocke)
+        connected_faces_v2 = [f for f in faces if v2 in (f.v1, f.v2, f.v3)]
+        neighbors = adjacency[v2]
+        v2_est = mean_position(neighbors)
+        v2_est_pos = np.array(v2_est.as_tuple())
 
-        cut_neighbors = apply_collapse(v1, v2, faces, adjacency, vertices)
+        v_err = v2_pos - v2_est_pos        # erreur (celle qu'on stocke)
+        
+
+        w12, neighbors_between = apply_collapse(v1, v2, new_obj)
         collapse_info.append({"v_split": v1, 
-                              "v_est": v_est, 
-                              "cut_neighbors": cut_neighbors,
+                              "v_err": v_err, 
+                              "w12": w12,
+                              "neighbors_between": neighbors_between
                               })
-
-    new_obj.vertices = [v for v in vertices if v in adjacency]
-    new_obj.nb_vertices = len(new_obj.vertices)
-    new_obj.nb_faces = len(new_obj.faces)
-
-
-    root = next(iter(adjacency.keys()))
-    parent = build_spanning_tree(adjacency, root)
-
-    for rec in collapse_info:
-        encode_cut_indices(rec, adjacency, parent)
-
-    for v, neighs in list(adjacency.items()):
-        adjacency[v] = [n for n in neighs if n in adjacency]
 
     return new_obj, adjacency, collapse_info
 

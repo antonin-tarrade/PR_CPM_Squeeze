@@ -22,8 +22,19 @@ class Object3D:
                 faces.append(face)
         self.vertices = vertices
         self.faces = faces
+        self.adjacency = self.build_adjacency()
         self.nb_vertices = len(vertices)
         self.nb_faces = len(faces)
+    
+    def build_adjacency(self):
+        adjacency = {v: [] for v in self.vertices}
+        for f in self.faces:
+            for (a, b, c) in [(f.v1, f.v2, f.v3), (f.v2, f.v3, f.v1), (f.v3, f.v1, f.v2)]:
+                if b not in adjacency[a]:
+                    adjacency[a].append(b)
+                if c not in adjacency[a]:
+                    adjacency[a].append(c)
+        return adjacency
 
     def Show(self, title=None):
         if title is None:
@@ -69,7 +80,7 @@ class Object3D:
                 annotations=[
                     dict(
                         showarrow=False,
-                        text=f"Vertices: {self.nb_vertices} | Faces: {self.nb_faces}",
+                        text=f"Vertices: {len(self.vertices)} | Faces: {len(self.faces)}",
                         xref="paper",
                         yref="paper",
                         x=0,
@@ -79,6 +90,28 @@ class Object3D:
             )
         )
         fig.show()
+    
+    def add_vertex(self, vertex):
+        self.vertices.append(vertex)
+        self.nb_vertices += 1
+
+    def del_vertex(self, vertex):
+        if vertex in self.vertices:
+            self.vertices.remove(vertex)
+            self.nb_vertices -= 1
+    
+    def add_face(self, face):
+        self.faces.append(face)
+        self.nb_faces += 1
+        # Actualiser l'adjacency
+        self.adjacency = self.build_adjacency()
+    
+    def del_face(self, face):
+        if face in self.faces:
+            self.faces.remove(face)
+            self.nb_faces -= 1
+            # Actualiser l'adjacency
+            self.adjacency = self.build_adjacency()
 
 
 # Classe pour gérer les LODs 
@@ -114,9 +147,8 @@ class AObject3D:
         M_n = self.get_last_lod()
 
         for n in range(nb_decompressions):
-            adjacency = self.adjacency_ref[-(n+1)]
             info = self.collapse_info[-(n+1)]
-            M_n = squeeze_decompression(M_n, adjacency, info)
+            M_n = squeeze_decompression(M_n, info)
         return M_n
 
     def show_lods(self):

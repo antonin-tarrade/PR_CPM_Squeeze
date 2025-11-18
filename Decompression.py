@@ -2,104 +2,95 @@ import numpy as np
 import copy
 from utils import *
 
-def apply_vertex_split(collapse_info, adjacency, faces, vertices):
+
+def squeeze_decompression(Mi_minus_1, infos):
+    print("Decompression started...")
+    Mi = copy.deepcopy(Mi_minus_1)
+    i = 0
+    for info in reversed(infos):
+        i += 1
+        print(i)
+        apply_vertex_split(Mi, info)
+        
+    return Mi
+
+
+def apply_vertex_split(Model, collapse_info):
+    # Extraire les données nécessaires
+    vertices = Model.vertices
+    faces = Model.faces
+    adjacency = Model.adjacency
     vsplit = collapse_info['v_split']
-    cut_indices = collapse_info['cut_indices']
-    v_est = np.array(collapse_info['v_est'])
+    w1, w2 = collapse_info['w12']
+    v_err = np.array(collapse_info['v_err'])
+    neighbors_between = collapse_info['neighbors_between']
 
-    # si on n'a pas 2 indices valides, on ne peut pas reconstruire proprement
-    if len(cut_indices) == 0:
-        return
 
-    neighbors = adjacency.get(vsplit, [])
-    d = len(neighbors)
-    if d == 0:
-        return
-
-    i1 = cut_indices[0] % d
-    w1 = neighbors[i1]
-    w2 = neighbors[cut_indices[1] % d] if len(cut_indices) > 1 and cut_indices[1] >= 0 else w1
-
+    # Retirer les faces connectant vsplit à ses voisins entre w1 et w2
+    faces_to_remove = []
+    for f in faces:
+        if vsplit in (f.v1, f.v2, f.v3):
+            # Dans les facede v1
+            other_vertices = [v for v in (f.v1, f.v2, f.v3) if v != vsplit]
+            if all(v in neighbors_between for v in other_vertices):
+                faces_to_remove.append(f)
+    for f in faces_to_remove:
+        Model.del_face(f)
 
     # Calcul prédictif pour retrouver la position de vnew
-    bary = np.mean([
-        np.array([(w1.x + w2.x + vsplit.x) / 3,
-                  (w1.y + w2.y + vsplit.y) / 3,
-                  (w1.z + w2.z + vsplit.z) / 3])
-    ], axis=0)
+    bary = mean_position(list(neighbors_between) + [vsplit])
+    bary = np.array(bary.as_tuple())
 
-  
-    new_pos = bary + v_est
-
+    # Ajout du nouveau sommet
+    new_pos = bary + v_err
     vnew = Vertex(*new_pos)
+    Model.add_vertex(vnew)
 
-    vertices.append(vnew)
-
-
-    # Mettre à jour les faces existantes pour reconnecter vnew
-    
-
-                    
     # Recréer les 2 faces supprimées pendant la compression
     f1 = Face(vsplit, w1, vnew)
     f2 = Face(vsplit, vnew, w2)
-    faces.extend([f1, f2])
+    Model.add_face(f1)
+    Model.add_face(f2)
+
+    # Ordonner neighbors_between de w1 à w2
+    ordered_neighbors_between = [w1]
+    for _ in range(len(neighbors_between)):
+        voisins_last = Model.adjacency[ordered_neighbors_between[-1]]
+        next_neighbors = [v for v in voisins_last if v in neighbors_between and v not in ordered_neighbors_between]
+        ordered_neighbors_between.append(next_neighbors[0])
+
+    # trouver les paires de voisins dans neighbors_between_ordered
+    neighbor_pairs = []
+    nb_list = list(ordered_neighbors_between)
+    for idx in range(len(nb_list) - 1):
+        neighbor_pairs.append((nb_list[idx], nb_list[idx + 1]))
+
+    # Ajouter les faces entre vnew et les paires de points
+    for v_a, v_b in neighbor_pairs:
+        Model.add_face(Face(vnew, v_a, v_b))
 
 
-    # Rettre à jour adjacency
-    adjacency[vsplit].extend([vnew])
-    adjacency[vnew] = [vsplit, w1, w2]
-    for w in (w1, w2):
-        adjacency[w].append(vnew)
 
 
-def dedup_vertices_from_faces(faces, eps=1e-6):
-    """
-    Reconstruit une liste de sommets SANS doublons géométriques.
-    Si deux Vertex ont (x,y,z) très proches, on garde le premier
-    et on remplace dans les faces.
-    """
-    pos2vert = {}   # (x,y,z) arrondi -> Vertex canonique
-    unique_vertices = []
 
-    def key_from_vertex(v):
-        return (round(v.x / eps) * eps,
-                round(v.y / eps) * eps,
-                round(v.z / eps) * eps)
 
-    for f in faces:
-        for attr in ("v1", "v2", "v3"):
-            v = getattr(f, attr)
-            k = key_from_vertex(v)
-            if k in pos2vert:
-                # remplacer par le vertex déjà existant
-                setattr(f, attr, pos2vert[k])
-            else:
-                # nouveau sommet canonique
-                pos2vert[k] = v
-                unique_vertices.append(v)
+    # p1 = vnew
+    # p2 = w1
+    # print(neighbors_between)
+    # print(len(neighbors_between))
+    # for _ in range(len(neighbors_between)-1):
+    #     print(adjacency[p2])
+    #     print(neighbors_between)
+    #     p3 = [v for v in neighbors_between if v in adjacency[p2]][0]
+    #     neighbors_between.remove(p3)
+    #     f = Face(p1, p2, p3)
+    #     Model.add_face(f)
+    #     p2 = p3
 
-    return unique_vertices
 
-def squeeze_decompression(Mi_minus_1, adjacency, infos):
-    new_obj = copy.deepcopy(Mi_minus_1)
-    faces = new_obj.faces
-    vertices = new_obj.vertices
 
-    for rec in reversed(infos):
-        apply_vertex_split(
-            rec,
-            adjacency,
-            faces,
-            vertices
-        )
-
-    # reconstruire la liste de sommets utilisée par les faces
-    unique_vertices = dedup_vertices_from_faces(faces, eps=1e-6)
     
-    new_obj.vertices = unique_vertices
-    new_obj.nb_vertices = len(unique_vertices)
-    new_obj.nb_faces = len(faces)
 
 
-    return new_obj
+
+
