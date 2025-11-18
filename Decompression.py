@@ -21,16 +21,6 @@ def apply_vertex_split(collapse_info, adjacency, faces, vertices):
     w2 = neighbors[cut_indices[1] % d] if len(cut_indices) > 1 and cut_indices[1] >= 0 else w1
 
 
-    # Retrouver les voisins autour de vsplit
-    neighbors = adjacency[vsplit]
-    d = len(neighbors)
-
-    # Retrouver les deux voisins concernés
-    i1 = cut_indices[0]
-    i2 = cut_indices[1]
-    w1 = neighbors[i1 % d]
-    w2 = neighbors[i2 % d]
-
     # Calcul prédictif pour retrouver la position de vnew
     bary = np.mean([
         np.array([(w1.x + w2.x + vsplit.x) / 3,
@@ -38,18 +28,23 @@ def apply_vertex_split(collapse_info, adjacency, faces, vertices):
                   (w1.z + w2.z + vsplit.z) / 3])
     ], axis=0)
 
-    v_pred = bary - np.array(vsplit.as_tuple())
-    vdisp = v_est + v_pred
-    new_pos = np.array(vsplit.as_tuple()) + vdisp
+  
+    new_pos = bary + v_est
 
     vnew = Vertex(*new_pos)
 
     vertices.append(vnew)
 
+
+    # Mettre à jour les faces existantes pour reconnecter vnew
+    
+
+                    
     # Recréer les 2 faces supprimées pendant la compression
     f1 = Face(vsplit, w1, vnew)
     f2 = Face(vsplit, vnew, w2)
     faces.extend([f1, f2])
+
 
     # Rettre à jour adjacency
     adjacency[vsplit].extend([vnew])
@@ -90,7 +85,6 @@ def squeeze_decompression(Mi_minus_1, adjacency, infos):
     new_obj = copy.deepcopy(Mi_minus_1)
     faces = new_obj.faces
     vertices = new_obj.vertices
-    # adjacency = build_adjacency(new_obj)
 
     for rec in reversed(infos):
         apply_vertex_split(

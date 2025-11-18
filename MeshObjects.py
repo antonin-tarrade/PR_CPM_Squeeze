@@ -113,7 +113,7 @@ class AObject3D:
 
         M_n = self.get_last_lod()
 
-        for n in np.arange(nb_decompressions):
+        for n in range(nb_decompressions):
             adjacency = self.adjacency_ref[-(n+1)]
             info = self.collapse_info[-(n+1)]
             M_n = squeeze_decompression(M_n, adjacency, info)
