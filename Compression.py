@@ -20,11 +20,11 @@ def is_collapse_valid(v1, v2, adjacency, collapsed_vertices):
     return True
 
 
-def select_edge_collapses(vertices, adjacency, nb_collapses):
+def select_edge_collapses(id_vertices, adjacency, nb_collapses):
     edges = []
-    for v in vertices:
-        for n in adjacency[v]:
-            if v != n and (n, v) not in edges:
+    for id_v in id_vertices:
+        for n in adjacency[id_v]:
+            if id_v != n and (n, v) not in edges:
                 edges.append((v, n))
     edges_with_cost = [(e, edge_length(*e)) for e in edges]
     edges_with_cost.sort(key=lambda x: x[1])
@@ -83,25 +83,25 @@ def squeeze_compression(Object3D, compression_ratio=0.1):
     target_vertex_count = int(len(vertices) * (1 - compression_ratio))
     nb_collapses = len(vertices) - target_vertex_count
 
-    collapse_edges = select_edge_collapses(vertices, adjacency, nb_collapses)
+    collapse_edges = select_edge_collapses(vertices.keys(), adjacency, nb_collapses)
     collapse_info = []
 
     for (v1, v2) in collapse_edges:
         v2_pos = v2.as_array()
 
-        neighbors = new_obj.adjacency[v2]  # Use updated adjacency, not stale one
-        v2_est = mean_position(neighbors)
-        v2_est_pos = v2_est.as_array()
+        neighbors = new_obj.adjacency[v2]
+        v2_est_pos = mean_position(neighbors)
 
-        v_err = v2_pos - v2_est_pos        # erreur (celle qu'on stocke)
+        v_err = v2_pos - v2_est_pos
         
 
         w12, neighbors_between = apply_collapse(v1, v2, new_obj)
         
-        collapse_info.append({"v_split": v1.as_array(), 
+        collapse_info.append({"v_split": v1.as_array(),
                               "v_err": v_err, 
                               "w12": w12,
-                              "neighbors_between": neighbors_between
+                              "neighbors_between": neighbors_between,
+                              "id_v2": v2.id
                               })
 
     return new_obj, collapse_info

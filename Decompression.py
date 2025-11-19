@@ -18,6 +18,7 @@ def apply_vertex_split(Model, collapse_info):
     adjacency = Model.adjacency
     vsplit = get_vertex_from_array(vertices,collapse_info['v_split'])
     w12_tuples = collapse_info['w12']
+    id_v2 = collapse_info['id_v2']
     
     # Look up w1 and w2 in the current mesh by their coordinates
     w1 = get_vertex_from_array(vertices, w12_tuples[0])
@@ -34,14 +35,20 @@ def apply_vertex_split(Model, collapse_info):
         if v is not None:
             neighbors_between.add(v)
 
+    
+    # # Trouver vsslit comme voisin de w1 et w2    
+    # for v in adjacency[w1]:
+    #     if v in adjacency[w2]:
+    #         vsplit = v
+    #         break
+
     # Calcul prédictif pour retrouver la position de vnew
     neighbors_list = list(neighbors_between) + [vsplit]
     bary = mean_position(neighbors_list)
-    bary = bary.as_array()
 
     # Ajout du nouveau sommet
     new_pos = bary + v_err
-    vnew = Vertex(*new_pos)
+    vnew = Vertex(*new_pos, id_v2)
     Model.add_vertex(vnew)
 
     # Recréer les 2 faces supprimées pendant la compression

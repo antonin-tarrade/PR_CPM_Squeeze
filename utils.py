@@ -2,8 +2,10 @@ import numpy as np
 
 
 class Vertex:
-    def __init__(self, x, y, z):
+    def __init__(self, x, y, z, id):
         self.x, self.y, self.z = x, y, z
+        self.id = id
+
     def as_tuple(self):
         return (self.x, self.y, self.z)
     
@@ -23,8 +25,10 @@ class Vertex:
 
 
 class Face:
-    def __init__(self, v1, v2, v3):
-        self.v1, self.v2, self.v3 = v1, v2, v3
+    def __init__(self, id_v1, id_v2, id_v3):
+        if not isinstance(id_v1, int) or not isinstance(id_v2, int) or not isinstance(id_v3, int):
+            raise ValueError("Face vertices must be identified by integer IDs.")
+        self.id_v1, self.id_v2, self.id_v3 = id_v1, id_v2, id_v3
 
 
 
@@ -57,8 +61,7 @@ def get_values_between(values, id_min, id_max):
 
 def mean_position(vertices):
     coords = np.array([v.as_tuple() for v in vertices])
-    mean_coords = np.mean(coords, axis=0)
-    return Vertex(*mean_coords)
+    return np.mean(coords, axis=0)
 
 
 def get_vertex_from_array(vertices, arr):

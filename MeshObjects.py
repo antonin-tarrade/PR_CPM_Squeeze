@@ -11,14 +11,16 @@ import plotly.graph_objects as go
 class Object3D:
     def __init__(self, objFile, name=None):
         self.name = name or "Unknown"
-        vertices, faces = [], []
+        vertices, faces = dict(), []
+        id = 1
         for line in objFile:
             if line.startswith('v '):
                 parts = line.strip().split()
-                vertices.append(Vertex(float(parts[1]), float(parts[2]), float(parts[3])))
+                vertices[id] = Vertex(float(parts[1]), float(parts[2]), float(parts[3]), id)
+                id += 1
             elif line.startswith('f '):
                 parts = line.strip().split()
-                face = Face(*[vertices[int(p) - 1] for p in parts[1:]])
+                face = Face(*[int(p) for p in parts[1:]]) ############## problèmes d'indices ici ?
                 faces.append(face)
         self.vertices = vertices
         self.faces = faces
@@ -27,13 +29,12 @@ class Object3D:
         self.nb_faces = len(faces)
     
     def build_adjacency(self):
-        adjacency = {v: [] for v in self.vertices}
+        adjacency = {id: [] for id in self.vertices.keys()}
+        print (adjacency)
         for f in self.faces:
-            for (a, b, c) in [(f.v1, f.v2, f.v3), (f.v2, f.v3, f.v1), (f.v3, f.v1, f.v2)]:
+            for (a, b, c) in [(f.id_v1, f.id_v2, f.id_v3), (f.id_v2, f.id_v3, f.id_v1), (f.id_v3, f.id_v1, f.id_v2)]:
                 if a not in adjacency:
-                    print(f"Warning: Vertex {a.as_tuple()} not in adjacency, adding it.")
-                    adjacency[a] = []
-                    self.add_vertex(a)
+                    raise ValueError(f"Vertex ID {a} in face not found in vertices.")
                 if b not in adjacency[a]:
                     adjacency[a].append(b)
                 if c not in adjacency[a]:
@@ -44,13 +45,16 @@ class Object3D:
         if title is None:
             title = f"3D Object : {self.name}"
 
-        x, y, z = zip(*[v.as_tuple() for v in self.vertices])
+        x, y, z = zip(*[v.as_tuple() for v in self.vertices.values()])
 
-        # Map vertices to indices for faces
-        vertex_to_index = {v: idx for idx, v in enumerate(self.vertices)}
-        i = [vertex_to_index[f.v1] for f in self.faces]
-        j = [vertex_to_index[f.v2] for f in self.faces]
-        k = [vertex_to_index[f.v3] for f in self.faces]
+        # Map vertex id -> index in the x/y/z arrays
+        vertices_list = list(self.vertices.values())
+        index_map = {v.id: idx for idx, v in enumerate(vertices_list)}
+
+        # Build face index arrays (i, j, k) referencing positions in x/y/z
+        i = [index_map.get(f.id_v1, 0) for f in self.faces]
+        j = [index_map.get(f.id_v2, 0) for f in self.faces]
+        k = [index_map.get(f.id_v3, 0) for f in self.faces]
 
         # Liste de couleurs autorisées
         main_color = "#B12CFF"
