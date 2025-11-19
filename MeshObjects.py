@@ -34,18 +34,26 @@ class AObject3D:
             self.model_lods.append(obj)
         return self.model_lods, self.collapse_info
     
-    def decompress(self, nb_decompressions = None):
+    def decompress(self, nb_decompressions=None):
+        # Si rien à décompresser
         if len(self.model_lods) == 0:
             return self.model_ref
+
+        # Combien d'étapes ?
         if nb_decompressions is None:
             nb_decompressions = self.get_nb_of_lods()
 
-        M_n = self.get_last_lod()
+        # On part du modèle le plus compressé M_min (dernier LOD stocké)
+        new_mesh = self.get_last_lod()
 
-        for n in range(nb_decompressions):
-            info = self.collapse_info[-(n+1)]
-            M_n = squeeze_decompression(M_n, info)
-        return M_n
+        # Récupération des infos de collapses correspondantes
+        collapse_info = self.collapse_info[-nb_decompressions:]
+
+        # On applique les décompressions dans l’ordre inverse
+        for infos in reversed(collapse_info):
+            new_mesh = squeeze_decompression(new_mesh, infos)
+
+        return new_mesh
 
     def show_lods(self):
         for idx, lod in enumerate(self.model_lods):

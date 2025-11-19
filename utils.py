@@ -3,6 +3,22 @@ import random
 import plotly.graph_objects as go
 import trimesh
 
+
+def update_faces_after_removal(faces, removed_index):
+    # Créer une copie pour ne pas modifier l'original
+    new_faces = faces.copy()
+    
+    # Décrémenter tous les indices supérieurs au vertex supprimé
+    mask = new_faces > removed_index
+    new_faces[mask] -= 1
+    
+    # Supprimer les faces qui contiennent le vertex supprimé
+    mask_removed_vertex = np.any(new_faces == removed_index, axis=1)
+    new_faces = new_faces[~mask_removed_vertex]
+    
+    return new_faces
+
+
 def adjust_hex_color(hex_color, factor):
     hex_color = hex_color.lstrip("#")
 
@@ -18,49 +34,19 @@ def adjust_hex_color(hex_color, factor):
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
-def get_values_between(values, id_min, id_max):
-    if id_max == id_min:
-        return []
 
-    if id_min < id_max:
-        return values[id_min + 1:id_max]
-
-    # Cas circulaire
-    return values[id_min + 1:] + values[:id_max]
-
-
-
-def mean_position(vertices):
-    coords = np.array([v.as_tuple() for v in vertices])
-    mean_coords = np.mean(coords, axis=0)
-    return Vertex(*mean_coords)
-
-
-def get_vertex_from_array(vertices, arr):
-    for v in vertices:
-        if np.allclose(v.as_array(), arr, atol=1e-7):
-            return v
-    return None
-
-
-
-import plotly.graph_objects as go
-import random
-
-def show_obj(mesh: trimesh.Trimesh, title=None):
-    # Titre
+def show_obj(mesh: trimesh.Trimesh, title=None, point=False):
+    # Titre automatique si non fourni
     if title is None:
         title = f"3D Object : {mesh.metadata.get('name', 'Unnamed')}"
 
-    # Extraction des vertices
+    # Extraction vertices
     x, y, z = mesh.vertices[:, 0], mesh.vertices[:, 1], mesh.vertices[:, 2]
 
-    # Extraction des faces (déjà des indices)
-    i = mesh.faces[:, 0]
-    j = mesh.faces[:, 1]
-    k = mesh.faces[:, 2]
+    # Extraction faces
+    i, j, k = mesh.faces[:, 0], mesh.faces[:, 1], mesh.faces[:, 2]
 
-    # Couleurs
+    # Couleurs pour les faces
     main_color = "#B12CFF"
     colors = [
         adjust_hex_color(main_color, 0.9),
@@ -68,12 +54,14 @@ def show_obj(mesh: trimesh.Trimesh, title=None):
         adjust_hex_color(main_color, 1.1),
         adjust_hex_color(main_color, 1.2),
     ]
-
     face_colors = [random.choice(colors) for _ in range(len(mesh.faces))]
 
-    # Création figure plotly
-    fig = go.Figure(
-        data=[
+    # Liste des traces à afficher
+    traces = []
+
+    # === Affichage des faces ===
+    if point is False or point == "both":
+        traces.append(
             go.Mesh3d(
                 x=x, y=y, z=z,
                 i=i, j=j, k=k,
@@ -81,12 +69,27 @@ def show_obj(mesh: trimesh.Trimesh, title=None):
                 flatshading=True,
                 opacity=1.0
             )
-        ],
+        )
+
+    # === Affichage des points ===
+    if point is True or point == "both":
+        traces.append(
+            go.Scatter3d(
+                x=x, y=y, z=z,
+                mode="markers",
+                marker=dict(size=3, color="black"),
+                name="Vertices"
+            )
+        )
+
+    # Création figure
+    fig = go.Figure(
+        data=traces,
         layout=go.Layout(
             scene=dict(
-                xaxis=dict(visible=False),
-                yaxis=dict(visible=False),
-                zaxis=dict(visible=False)
+                xaxis=dict(visible=True),
+                yaxis=dict(visible=True),
+                zaxis=dict(visible=True),
             ),
             title=title,
             annotations=[

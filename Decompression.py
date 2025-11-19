@@ -1,78 +1,70 @@
-import numpy as np
 import copy
-from utils import *
+import numpy as np
+import trimesh
 
 
-def squeeze_decompression(Mi_minus_1, infos):
-    Mi = copy.deepcopy(Mi_minus_1)
+def squeeze_decompression(mesh, infos):
     for info in reversed(infos):
-        apply_vertex_split(Mi, info)
-        
-    return Mi
+        mesh = apply_vertex_split(mesh, info)
+    return mesh
 
+def apply_vertex_split(mesh, info):
+    vertices = mesh.vertices.copy()
+    faces = mesh.faces.copy()
 
-def apply_vertex_split(Model, collapse_info):
-    # Extraire les données nécessaires
-    vertices = Model.vertices
-    faces = Model.faces
-    adjacency = Model.adjacency
-    vsplit = get_vertex_from_array(vertices,collapse_info['v_split'])
-    w12_tuples = collapse_info['w12']
-    
-    # Look up w1 and w2 in the current mesh by their coordinates
-    w1 = get_vertex_from_array(vertices, w12_tuples[0])
-    w2 = get_vertex_from_array(vertices, w12_tuples[1])
-    
-    if w1 is None or w2 is None:
-        raise ValueError(f"Could not find w1 or w2 in vertices. w12={w12_tuples}")
-    
-    v_err = np.array(collapse_info['v_err'])
-    neighbors_between_array = collapse_info['neighbors_between']
-    neighbors_between = set()
-    for arr in neighbors_between_array:
-        v = get_vertex_from_array(vertices, arr)
-        if v is not None:
-            neighbors_between.add(v)
+    # --- Extraction des données ---
+    vsplit, v2 = info["v_split"]             # indice
+    w12 = info["w12"]                        # liste d'indices
+    neighbors_between = set(info["neighbors_between"])
+    v_err = np.asarray(info["v_err"], float)
 
-    # Calcul prédictif pour retrouver la position de vnew
-    bary = mean_position(list(neighbors_between) + [vsplit])
-    bary = bary.as_array()
+    # --- 1. Calcule du barycentre prédictif ---
+    pts = [vertices[vsplit]]
+    if len(w12) >= 1:
+        pts.append(vertices[w12[0]])
+    if len(w12) >= 2:
+        pts.append(vertices[w12[1]])
+    for n in neighbors_between:
+        pts.append(vertices[n])
 
-    # Ajout du nouveau sommet
-    new_pos = bary + v_err
-    vnew = Vertex(*new_pos)
-    Model.add_vertex(vnew)
+    bary = np.mean(np.vstack(pts), axis=0)
 
-    # Recréer les 2 faces supprimées pendant la compression
-    f1 = Face(vsplit, w1, vnew)
-    f2 = Face(vsplit, vnew, w2)
+    # --- 2. Reconstruction du nouveau sommet ---
+    vnew_pos = bary + v_err
+    vnew = v2  # position où insérer le nouveau vertex
 
-    Model.add_face(f1)
-    Model.add_face(f2)
+    # Insérer le nouveau vertex dans vertices à l'indice vnew
+    new_vertices = np.insert(vertices, vnew, vnew_pos, axis=0)
 
-    Model.adjacency = Model.build_adjacency()
+    # --- 3. Reconstruction des deux faces supprimées ---
+    added_faces = []
+    for w in w12:
+        added_faces.append([vsplit, w, vnew])
 
-    # Mettre a jour les faces connectant vsplit à ses voisins entre w1 et w2
-    for f in faces:
-        if vsplit in [f.v1, f.v2, f.v3]:
-            other_vertices = [v for v in [f.v1, f.v2, f.v3] if v != vsplit]
-            if all(v in neighbors_between for v in other_vertices):
-                # Mettre à jour la face pour inclure vnew
-                if f.v1 == vsplit:
-                    f.v1 = vnew
-                elif f.v2 == vsplit:
-                    f.v2 = vnew
-                elif f.v3 == vsplit:
-                    f.v3 = vnew
+    # --- 4. Mise à jour des faces existantes ---
+    new_faces = faces.copy()
+
+    for i, f in enumerate(new_faces):
+        if vsplit in f:
+            others = [v for v in f if v != vsplit]
             
+            # Cette face avait absorbé v2 → on la restaure
+            if len(others) == 2 and set(others).issubset(neighbors_between):
+                f2 = f.copy()
+                f2[f2 == vsplit] = vnew
+                new_faces[i] = f2
 
-    # Mettre à jour l'adjacency
-    Model.adjacency = Model.build_adjacency()
+    # --- 5. On concatène les faces ajoutées ---
+    if len(added_faces) > 0:
+        new_faces = np.vstack([new_faces, np.array(added_faces, int)])
 
+    # --- 6. On supprime les faces dégénérées ---
+    mask = np.array([len(set(face)) == 3 for face in new_faces])
+    new_faces = new_faces[mask]
 
-
-    
-
-
-
-
+    # --- 7. Création du mesh final ---
+    return trimesh.Trimesh(
+        vertices=new_vertices,
+        faces=new_faces,
+        process=True
+    )

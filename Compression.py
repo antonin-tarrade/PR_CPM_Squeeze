@@ -60,19 +60,17 @@ def apply_collapse(v1, v2, mesh):
     faces = mesh.faces.copy()
 
     faces_to_remove = []
-    w12 = []
-    neighbors_between = []
+    w12 = []               # → indices !
+    neighbors_between = [] # → indices !
 
-    # Étape 1 — analyser les faces
     for fi, f in enumerate(faces):
         if v2 in f:
             vA, vB, vC = f
             other = [v for v in (vA, vB, vC) if v not in (v1, v2)]
-            other_pos = [vertices[o] for o in other]
 
-            # CAS 1 : face avec v1 et v2 → triang degenerate
+            # CAS 1 : face avec v1 et v2 → triangle dégénéré
             if len(other) == 1:
-                w12.append(other_pos[0])
+                w12.append(other[0])
                 faces_to_remove.append(fi)
 
             # CAS 2 : face avec seulement v2
@@ -80,33 +78,33 @@ def apply_collapse(v1, v2, mesh):
                 new_f = f.copy()
                 new_f[new_f == v2] = v1
                 faces[fi] = new_f
-                neighbors_between.extend(other_pos)
+                neighbors_between.extend(other)
 
-    # Étape 2 — supprimer faces invalides
-    faces = np.delete(faces, faces_to_remove, axis=0)
+    # suppression et remap identiques...
 
-    # Étape 3 — supprimer le vertex v2
     keep = np.ones(len(vertices), dtype=bool)
     keep[v2] = False
     new_vertices = vertices[keep]
 
-    # Construire le remap
     remap = np.full(len(vertices), -1, dtype=int)
     remap[np.where(keep)[0]] = np.arange(len(new_vertices))
 
-    # Étape 4 — remapper les faces (cela peut introduire des -1)
     new_faces = remap[faces]
-
-    # Étape 5 — éliminer les faces invalides (celles contenant -1)
     mask = np.all(new_faces != -1, axis=1)
     new_faces = new_faces[mask]
 
-    # Étape 6 — recréer le mesh final
     new_mesh = trimesh.Trimesh(vertices=new_vertices,
                                faces=new_faces,
                                process=True)
 
-    return w12, neighbors_between, new_mesh
+    # Remapper aussi w12 et neighbors_between
+    v1 = remap[v1] if remap[v1] != -1 else v1
+    v12 = [v1,v2]
+    w12 = [remap[i] for i in w12 if remap[i] != -1]
+    neighbors_between = [remap[i] for i in neighbors_between if remap[i] != -1]
+
+    return v12, w12, neighbors_between, new_mesh
+
 
 
 
@@ -160,13 +158,13 @@ def squeeze_compression(obj: trimesh.Trimesh, compression_ratio=0.1):
         # ---------------------------------------------------------
         # 4) Collapse réel du mesh
         # ---------------------------------------------------------
-        w12, neighbors_between, new_obj = apply_collapse(v1, v2, new_obj)
+        v12, w12, neighbors_between, new_obj = apply_collapse(v1, v2, new_obj)
 
         # ---------------------------------------------------------
         # 5) Mémorisation du collapse
         # ---------------------------------------------------------
         collapse_info.append({
-            "v_split": new_obj.vertices[v1],
+            "v_split": v12,
             "v_err": v_err_pos,
             "w12": w12,
             "neighbors_between": neighbors_between
