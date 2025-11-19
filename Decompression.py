@@ -36,8 +36,6 @@ def apply_vertex_split(Model, collapse_info):
 
     # Calcul prédictif pour retrouver la position de vnew
     neighbors_list = list(neighbors_between) + [vsplit]
-    print(f"Neighbors between count: {len(neighbors_list)}")
-    print(neighbors_list)
     bary = mean_position(neighbors_list)
     bary = bary.as_array()
 
