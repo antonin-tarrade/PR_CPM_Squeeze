@@ -5,69 +5,87 @@ from utils import *
 
 def squeeze_decompression(Mi_minus_1, infos):
     Mi = copy.deepcopy(Mi_minus_1)
+    print(f"Starting decompression: there will be {len(infos)} vertex splits to apply.")
     for info in reversed(infos):
         apply_vertex_split(Mi, info)
-        
     return Mi
+
+def extract_vdel_neighbors(ordered_neighbors, w1, w2): 
+    idx1 = ordered_neighbors.index(w1.id) 
+    idx2 = ordered_neighbors.index(w2.id) 
+    if idx1 < idx2: 
+        neighbors_between = ordered_neighbors[idx1 + 1 : idx2] 
+    else: # handle wrap-around (cyclic) 
+        neighbors_between = ordered_neighbors[idx1 + 1 :] + ordered_neighbors[:idx2] 
+    return neighbors_between
 
 
 def apply_vertex_split(Model, collapse_info):
     # Extraire les données nécessaires
     vertices = Model.vertices
     faces = Model.faces
-    adjacency = Model.adjacency
-    vsplit = get_vertex_from_array(vertices,collapse_info['v_split'])
-    w12_tuples = collapse_info['w12']
+    vsplit = vertices.get(collapse_info['v_split'], None)
+    vdel_id = collapse_info['vdel_id']
+    if vsplit is None:
+        raise ValueError(f"Could not find vsplit in vertices. vsplit id={collapse_info['v_split']}")
     
-    # Look up w1 and w2 in the current mesh by their coordinates
-    w1 = get_vertex_from_array(vertices, w12_tuples[0])
-    w2 = get_vertex_from_array(vertices, w12_tuples[1])
-    
+    cut_ids = collapse_info['cut_ids']
+    w1 = vertices.get(cut_ids[0], None)
+    w2 = vertices.get(cut_ids[1], None)
+
     if w1 is None or w2 is None:
-        raise ValueError(f"Could not find w1 or w2 in vertices. w12={w12_tuples}")
+        raise ValueError(f"Could not find w1 or w2 in vertices")
     
-    v_err = np.array(collapse_info['v_err'])
-    neighbors_between_array = collapse_info['neighbors_between']
-    neighbors_between = set()
-    for arr in neighbors_between_array:
-        v = get_vertex_from_array(vertices, arr)
-        if v is not None:
-            neighbors_between.add(v)
+    v_err = collapse_info['v_err']
+
+    ordered_neighbors = collapse_info['ordered_neighbors']
+
+
+    # The new vertex vdel is estimated as the average of its immediate neighbors a1, ...ak,which are known from connectivity decoding
+    # We now that vdel_neighbors are contained in the neighbors of vsplit
+    # v_split_neighbors = ordered_neighbors
+    
+    # vdel_neighbors = extract_vdel_neighbors(v_split_neighbors, w1, w2)
 
     # Calcul prédictif pour retrouver la position de vnew
-    bary = mean_position(list(neighbors_between) + [vsplit])
-    bary = bary.as_array()
+    vdel_neighbors_vertices = [vertices[nid] for nid in ordered_neighbors]
+
+
+    bary = mean_position(vdel_neighbors_vertices)
 
     # Ajout du nouveau sommet
     new_pos = bary + v_err
-    vnew = Vertex(*new_pos)
-    Model.add_vertex(vnew)
+    vnew = Vertex(new_pos)
+    vnew.set_id(vdel_id)
+    Model.add_vertex_at(vnew)
 
     # Recréer les 2 faces supprimées pendant la compression
-    f1 = Face(vsplit, w1, vnew)
-    f2 = Face(vsplit, vnew, w2)
-
+    f1 = Face(vsplit.id, w1.id, vnew.id,Model.nb_faces())
     Model.add_face(f1)
-    Model.add_face(f2)
+    Model.vertices[vsplit.id].add_face(f1)
+    Model.vertices[w1.id].add_face(f1)
+    Model.vertices[vnew.id].add_face(f1)
 
-    Model.adjacency = Model.build_adjacency()
+    f2 = Face(vsplit.id, vnew.id, w2.id,Model.nb_faces())
+    Model.add_face(f2)
+    Model.vertices[vsplit.id].add_face(f2)
+    Model.vertices[w2.id].add_face(f2)
+    Model.vertices[vnew.id].add_face(f2)
 
     # Mettre a jour les faces connectant vsplit à ses voisins entre w1 et w2
     for f in faces:
-        if vsplit in [f.v1, f.v2, f.v3]:
-            other_vertices = [v for v in [f.v1, f.v2, f.v3] if v != vsplit]
-            if all(v in neighbors_between for v in other_vertices):
+        if vsplit.id in [f.v1, f.v2, f.v3]:
+            other_vertices = [v for v in [f.v1, f.v2, f.v3] if v != vsplit.id]
+            if all(v in ordered_neighbors for v in other_vertices):
                 # Mettre à jour la face pour inclure vnew
-                if f.v1 == vsplit:
-                    f.v1 = vnew
-                elif f.v2 == vsplit:
-                    f.v2 = vnew
-                elif f.v3 == vsplit:
-                    f.v3 = vnew
-            
+                if f.v1 == vsplit.id:
+                    f.v1 = vnew.id
+                elif f.v2 == vsplit.id:
+                    f.v2 = vnew.id
+                elif f.v3 == vsplit.id:
+                    f.v3 = vnew.id
 
-    # Mettre à jour l'adjacency
-    Model.adjacency = Model.build_adjacency()
+                vnew.add_face(f)
 
 
 

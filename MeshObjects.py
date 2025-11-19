@@ -3,54 +3,79 @@ from Decompression import squeeze_decompression
 from utils import *
 import numpy as np
 import random
-import copy
 import plotly.graph_objects as go
 
 # Structures de base : Vertex, Face, Object3D
 
 class Object3D:
+
     def __init__(self, objFile, name=None):
         self.name = name or "Unknown"
-        vertices, faces = [], []
+        self.vertices = {}
+        self.faces = []
+        self.next_vertex_id = 0
+        self.ParseOBJ(objFile)
+
+    def ParseOBJ(self,objFile):
         for line in objFile:
+            line = line.strip()
+            if not line:
+                continue
             if line.startswith('v '):
-                parts = line.strip().split()
-                vertices.append(Vertex(float(parts[1]), float(parts[2]), float(parts[3])))
+                parts = line.split()
+                try:
+                    coords = np.array([float(x) for x in parts[1:]], dtype=float)
+                except ValueError:
+                    continue
+                self.add_vertex(Vertex(coords))
             elif line.startswith('f '):
-                parts = line.strip().split()
-                face = Face(*[vertices[int(p) - 1] for p in parts[1:]])
-                faces.append(face)
-        self.vertices = vertices
-        self.faces = faces
-        self.adjacency = self.build_adjacency()
-        self.nb_vertices = len(vertices)
-        self.nb_faces = len(faces)
-    
-    def build_adjacency(self):
-        adjacency = {v: [] for v in self.vertices}
-        for f in self.faces:
-            for (a, b, c) in [(f.v1, f.v2, f.v3), (f.v2, f.v3, f.v1), (f.v3, f.v1, f.v2)]:
-                if a not in adjacency:
-                    print(f"Warning: Vertex {a.as_tuple()} not in adjacency, adding it.")
-                    adjacency[a] = []
-                    self.add_vertex(a)
-                if b not in adjacency[a]:
-                    adjacency[a].append(b)
-                if c not in adjacency[a]:
-                    adjacency[a].append(c)
-        return adjacency
+                parts = line.split()
+                idxs = []
+                for p in parts[1:]:
+                    # token may be 'v', 'v/t' or 'v/t/n' — take the vertex index before any '/'
+                    try:
+                        vi = int(p.split('/')[0]) - 1
+                    except Exception:
+                        # skip malformed token
+                        continue
+                    idxs.append(vi)
+                if len(idxs) >= 3:
+                    new_face = Face(*idxs[:3], len(self.faces))
+                    self.add_face(new_face)
+                    # Link face to vertices
+                    for vi in idxs[:3]:
+                        vertex = self.vertices.get(vi, None)
+                        if vertex is not None:
+                            vertex.add_face(new_face)
+
+
 
     def Show(self, title=None):
         if title is None:
             title = f"3D Object : {self.name}"
+        # Sanity checks
+        if self.nb_vertices() == 0:
+            print("Warning: object has no vertices to display")
+            return
+        if self.nb_faces() == 0:
+            print("Warning: object has no faces to display")
+            return
 
-        x, y, z = zip(*[v.as_tuple() for v in self.vertices])
+        # Build an ordered list of vertices and coordinate arrays
+        vertices_list = list(self.vertices.values())
+        x = [float(v.array[0]) for v in vertices_list]
+        y = [float(v.array[1]) for v in vertices_list]
+        z = [float(v.array[2]) for v in vertices_list]
 
-        # Map vertices to indices for faces
-        vertex_to_index = {v: idx for idx, v in enumerate(self.vertices)}
-        i = [vertex_to_index[f.v1] for f in self.faces]
-        j = [vertex_to_index[f.v2] for f in self.faces]
-        k = [vertex_to_index[f.v3] for f in self.faces]
+        # Map vertex id -> index in the x/y/z arrays
+        index_map = {v.id: idx for idx, v in enumerate(vertices_list)}
+
+        # Build face index arrays (i, j, k) referencing positions in x/y/z
+        i = [index_map.get(f.v1, 0) for f in self.faces]
+        j = [index_map.get(f.v2, 0) for f in self.faces]
+        k = [index_map.get(f.v3, 0) for f in self.faces]
+
+
 
         # Liste de couleurs autorisées
         main_color = "#B12CFF"
@@ -84,7 +109,7 @@ class Object3D:
                 annotations=[
                     dict(
                         showarrow=False,
-                        text=f"Vertices: {len(self.vertices)} | Faces: {len(self.faces)}",
+                        text=f"Vertices: {self.nb_vertices()} | Faces: {self.nb_faces()}",
                         xref="paper",
                         yref="paper",
                         x=0,
@@ -96,26 +121,44 @@ class Object3D:
         fig.show()
     
     def add_vertex(self, vertex):
-        self.vertices.append(vertex)
-        self.nb_vertices += 1
+        vertex.set_id(self.next_vertex_id)
+        self.next_vertex_id += 1
+        self.vertices[vertex.id] = vertex
 
-    def del_vertex(self, vertex):
-        if vertex in self.vertices:
-            self.vertices.remove(vertex)
-            self.nb_vertices -= 1
+    def add_vertex_at(self, vertex):
+        if self.vertices.get(vertex.id) is None:
+            self.vertices[vertex.id] = vertex
+        else :
+            raise ValueError(f"Vertex with id={vertex.id} already exists in the model.")
+    
+        
+        
+
+    def del_vertex(self, vertexID):
+        if self.vertices.get(vertexID) is not None:
+           self.vertices.pop(vertexID)
+
+
+
     
     def add_face(self, face):
         self.faces.append(face)
-        self.nb_faces += 1
-        # # Actualiser l'adjacency
-        # self.adjacency = self.build_adjacency()
+
     
     def del_face(self, face):
         if face in self.faces:
             self.faces.remove(face)
-            self.nb_faces -= 1
-            # # Actualiser l'adjacency
-            # self.adjacency = self.build_adjacency()
+            # update vertices
+            for v in (face.v1, face.v2, face.v3):
+                vertex = self.vertices.get(v, None)
+                if vertex is not None:
+                    vertex.remove_face(face)
+            
+    def nb_vertices(self):
+        return len(self.vertices)
+        
+    def nb_faces(self):
+        return len(self.faces)
 
 
 # Classe pour gérer les LODs 
@@ -125,7 +168,6 @@ class AObject3D:
         self.model_ref = objRef
         self.model_lods = []
         self.collapse_info = []
-        self.adjacency_ref = []
     
     def get_nb_of_lods(self):
         return len(self.model_lods)
@@ -139,7 +181,6 @@ class AObject3D:
             obj,transfo = squeeze_compression(last_lod, compression_ratio)
             self.collapse_info.append(transfo)
             self.model_lods.append(obj)
-            self.adjacency_ref.append(obj.build_adjacency())
         return self.model_lods, self.collapse_info
     
     def decompress(self, nb_decompressions = None):

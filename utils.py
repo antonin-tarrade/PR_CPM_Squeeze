@@ -2,30 +2,84 @@ import numpy as np
 
 
 class Vertex:
-    def __init__(self, x, y, z):
-        self.x, self.y, self.z = x, y, z
-    def as_tuple(self):
-        return (self.x, self.y, self.z)
-    
-    def as_array(self):
-        return np.array(self.as_tuple())
-    
-    # hash and eq to use Vertex as dict keys
-    def __hash__(self):
-        return hash((self.x, self.y, self.z))
-    
-    # def __str__(self):
-    #     return f"Vertex({self.x}, {self.y}, {self.z})"
-    
-    def __eq__(self, other):
-        return (self.x, self.y, self.z) == (other.x, other.y, other.z)
+    def __init__(self, array):
+        self.array = array 
+        self.id = None
+        self.faces = []
+
+    def set_id(self, id):
+        self.id = id
+
+    def add_face(self, face):
+        if face not in self.faces:
+            self.faces.append(face)
+            
+
+    def remove_face(self, face):
+        if face in self.faces:
+            self.faces.remove(face)
+
+
+    def get_neighbors(self):
+        vid = self.id
+
+        next_of = {}
+        prev_of = {}
+
+        for face in self.faces:
+            ids = [face.v1, face.v2, face.v3]
+            if vid not in ids:
+                continue
+            i = ids.index(vid)
+            u = ids[(i + 1) % 3]
+            w = ids[(i + 2) % 3]
+            next_of[u] = w
+            prev_of[w] = u
+
+        if not next_of:
+            return []
+
+        # -------- try CLOSED ring first --------
+        start = next(iter(next_of.keys()))
+        ordered = []
+        cur = start
+        visited = set()
+
+        while True:
+            ordered.append(cur)
+            visited.add(cur)
+            cur = next_of.get(cur, None)
+
+            if cur is None:
+                break                     # open boundary
+            if cur == start:
+                return ordered            # closed ring
+            if cur in visited:
+                break                     # corrupted but closed attempt failed
+
+        # -------- open boundary fallback --------
+        boundary_starts = [u for u in next_of.keys() if u not in prev_of]
+        if boundary_starts:
+            start = boundary_starts[0]
+
+        ordered = []
+        cur = start
+        visited = set()
+        while cur is not None and cur not in visited:
+            ordered.append(cur)
+            visited.add(cur)
+            cur = next_of.get(cur, None)
+
+        return ordered
 
 
 
 class Face:
-    def __init__(self, v1, v2, v3):
-        self.v1, self.v2, self.v3 = v1, v2, v3
-
+    def __init__(self,id1,id2,id3,face_id):
+        self.v1 = id1
+        self.v2 = id2
+        self.v3 = id3
+        self.id = face_id
 
 
 def adjust_hex_color(hex_color, factor):
@@ -56,13 +110,6 @@ def get_values_between(values, id_min, id_max):
 
 
 def mean_position(vertices):
-    coords = np.array([v.as_tuple() for v in vertices])
+    coords = [np.array(v.array) for v in vertices]
     mean_coords = np.mean(coords, axis=0)
-    return Vertex(*mean_coords)
-
-
-def get_vertex_from_array(vertices, arr):
-    for v in vertices:
-        if np.allclose(v.as_array(), arr, atol=1e-7):
-            return v
-    return None
+    return mean_coords
