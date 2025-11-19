@@ -1,6 +1,7 @@
 from Compression import squeeze_compression
 from Decompression import squeeze_decompression
 from utils import *
+import trimesh
 import numpy as np
 import random
 import copy
@@ -8,114 +9,7 @@ import plotly.graph_objects as go
 
 # Structures de base : Vertex, Face, Object3D
 
-class Object3D:
-    def __init__(self, objFile, name=None):
-        self.name = name or "Unknown"
-        vertices, faces = [], []
-        for line in objFile:
-            if line.startswith('v '):
-                parts = line.strip().split()
-                vertices.append(Vertex(float(parts[1]), float(parts[2]), float(parts[3])))
-            elif line.startswith('f '):
-                parts = line.strip().split()
-                face = Face(*[vertices[int(p) - 1] for p in parts[1:]])
-                faces.append(face)
-        self.vertices = vertices
-        self.faces = faces
-        self.adjacency = self.build_adjacency()
-        self.nb_vertices = len(vertices)
-        self.nb_faces = len(faces)
-    
-    def build_adjacency(self):
-        adjacency = {v: [] for v in self.vertices}
-        for f in self.faces:
-            for (a, b, c) in [(f.v1, f.v2, f.v3), (f.v2, f.v3, f.v1), (f.v3, f.v1, f.v2)]:
-                if a not in adjacency:
-                    print(f"Warning: Vertex {a.as_tuple()} not in adjacency, adding it.")
-                    adjacency[a] = []
-                    self.add_vertex(a)
-                if b not in adjacency[a]:
-                    adjacency[a].append(b)
-                if c not in adjacency[a]:
-                    adjacency[a].append(c)
-        return adjacency
 
-    def Show(self, title=None):
-        if title is None:
-            title = f"3D Object : {self.name}"
-
-        x, y, z = zip(*[v.as_tuple() for v in self.vertices])
-
-        # Map vertices to indices for faces
-        vertex_to_index = {v: idx for idx, v in enumerate(self.vertices)}
-        i = [vertex_to_index[f.v1] for f in self.faces]
-        j = [vertex_to_index[f.v2] for f in self.faces]
-        k = [vertex_to_index[f.v3] for f in self.faces]
-
-        # Liste de couleurs autorisées
-        main_color = "#B12CFF"
-        colors = [
-            adjust_hex_color(main_color, 0.9),   # 10% plus sombre
-            adjust_hex_color(main_color, 0.8),   # 20% plus sombre
-            adjust_hex_color(main_color, 1.1),   # 10% plus claire
-            adjust_hex_color(main_color, 1.2),   # 20% plus claire
-        ]
-
-        # Couleur aléatoire pour chaque face
-        face_colors = [random.choice(colors) for _ in self.faces]
-
-        fig = go.Figure(
-            data=[
-                go.Mesh3d(
-                    x=x, y=y, z=z,
-                    i=i, j=j, k=k,
-                    facecolor=face_colors,
-                    flatshading=True,
-                    opacity=1.0
-                )
-            ],
-            layout=go.Layout(
-                scene=dict(
-                    xaxis=dict(visible=False),
-                    yaxis=dict(visible=False),
-                    zaxis=dict(visible=False)
-                ),
-                title=title,
-                annotations=[
-                    dict(
-                        showarrow=False,
-                        text=f"Vertices: {len(self.vertices)} | Faces: {len(self.faces)}",
-                        xref="paper",
-                        yref="paper",
-                        x=0,
-                        y=0
-                    )
-                ]
-            )
-        )
-        fig.show()
-    
-    def add_vertex(self, vertex):
-        self.vertices.append(vertex)
-        self.nb_vertices += 1
-
-    def del_vertex(self, vertex):
-        if vertex in self.vertices:
-            self.vertices.remove(vertex)
-            self.nb_vertices -= 1
-    
-    def add_face(self, face):
-        self.faces.append(face)
-        self.nb_faces += 1
-        # # Actualiser l'adjacency
-        # self.adjacency = self.build_adjacency()
-    
-    def del_face(self, face):
-        if face in self.faces:
-            self.faces.remove(face)
-            self.nb_faces -= 1
-            # # Actualiser l'adjacency
-            # self.adjacency = self.build_adjacency()
 
 
 # Classe pour gérer les LODs 
@@ -125,7 +19,6 @@ class AObject3D:
         self.model_ref = objRef
         self.model_lods = []
         self.collapse_info = []
-        self.adjacency_ref = []
     
     def get_nb_of_lods(self):
         return len(self.model_lods)
@@ -136,10 +29,9 @@ class AObject3D:
     def compress(self, compression_ratio=0.1, nb_compressions=1):
         for _ in range(nb_compressions):
             last_lod = self.get_last_lod()
-            obj,transfo = squeeze_compression(last_lod, compression_ratio)
+            obj, transfo = squeeze_compression(last_lod, compression_ratio)
             self.collapse_info.append(transfo)
             self.model_lods.append(obj)
-            self.adjacency_ref.append(obj.build_adjacency())
         return self.model_lods, self.collapse_info
     
     def decompress(self, nb_decompressions = None):

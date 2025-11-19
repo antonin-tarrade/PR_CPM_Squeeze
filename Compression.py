@@ -5,8 +5,10 @@ from MeshObjects import *
 from utils import *
 
 
-def edge_length(v1, v2):
-    return np.linalg.norm(v1.as_array() - v2.as_array())
+def edge_length(v1, v2, obj):
+    pos1 = obj.vertices[v1]
+    pos2 = obj.vertices[v2]
+    return np.linalg.norm(pos1 - pos2)
 
 
 def is_collapse_valid(v1, v2, adjacency, collapsed_vertices):
@@ -20,89 +22,161 @@ def is_collapse_valid(v1, v2, adjacency, collapsed_vertices):
     return True
 
 
-def select_edge_collapses(vertices, adjacency, nb_collapses):
+def select_edge_collapses(obj, nb_collapses):
     edges = []
-    for v in vertices:
-        for n in adjacency[v]:
-            if v != n and (n, v) not in edges:
-                edges.append((v, n))
-    edges_with_cost = [(e, edge_length(*e)) for e in edges]
+    
+    # On parcourt les indices, pas les positions
+    for v in range(len(obj.vertices)):
+        for n in obj.vertex_neighbors[v]:  # adjacency[v] est une liste d'indices
+            if v != n:
+                # éviter doublons (v,n) / (n,v)
+                if (n, v) not in edges:
+                    edges.append((v, n))
+    
+    # Coûts : edge_length doit accepter deux indices et vertices
+    edges_with_cost = [(e, edge_length(e[0], e[1], obj)) 
+                       for e in edges]
+    
     edges_with_cost.sort(key=lambda x: x[1])
-
+    
     selected = []
     collapsed_vertices = set()
+
+    # Sélection des collapses valides
     for (v1, v2), _ in edges_with_cost:
-        if is_collapse_valid(v1, v2, adjacency, collapsed_vertices):
+        if is_collapse_valid(v1, v2, obj.vertex_neighbors, collapsed_vertices):
             selected.append((v1, v2))
             collapsed_vertices.update([v1, v2])
+
         if len(selected) >= nb_collapses:
             break
+    
     return selected
 
 
-def apply_collapse(v1, v2, obj):
-    faces = obj.faces
+
+def apply_collapse(v1, v2, mesh):
+    vertices = mesh.vertices.copy()
+    faces = mesh.faces.copy()
+
     faces_to_remove = []
     w12 = []
-    neibors_between = []
-    for f in faces:
-        if v2 in [f.v1, f.v2, f.v3]:
-            # on repère d’abord le 3e sommet de la face AVANT de la modifier
-            other_verts = [f.v1, f.v2, f.v3]
-            # sommet de la face qui n'est ni v1 ni v2
-            w = [vv.as_array() for vv in other_verts if vv not in (v1, v2)]
-            # cas face avec v1 et v2
-            if len(w) == 1:
-                w12.append(w[0]) 
-                faces_to_remove.append(f)
-            # cas face avec seulement v2
-            elif len(w) == 2:
-                if f.v1 == v2: f.v1 = v1
-                if f.v2 == v2: f.v2 = v1
-                if f.v3 == v2: f.v3 = v1
+    neighbors_between = []
 
-                for ws in w:
-                    neibors_between.append(ws)
+    # Étape 1 — analyser les faces
+    for fi, f in enumerate(faces):
+        if v2 in f:
+            vA, vB, vC = f
+            other = [v for v in (vA, vB, vC) if v not in (v1, v2)]
+            other_pos = [vertices[o] for o in other]
 
-                
-    for f in faces_to_remove:
-        obj.del_face(f)
+            # CAS 1 : face avec v1 et v2 → triang degenerate
+            if len(other) == 1:
+                w12.append(other_pos[0])
+                faces_to_remove.append(fi)
 
-    obj.del_vertex(v2)
+            # CAS 2 : face avec seulement v2
+            elif len(other) == 2:
+                new_f = f.copy()
+                new_f[new_f == v2] = v1
+                faces[fi] = new_f
+                neighbors_between.extend(other_pos)
 
-    # Mettre a jour l'adjacency
-    obj.adjacency = obj.build_adjacency()
+    # Étape 2 — supprimer faces invalides
+    faces = np.delete(faces, faces_to_remove, axis=0)
 
-    return w12, neibors_between
+    # Étape 3 — supprimer le vertex v2
+    keep = np.ones(len(vertices), dtype=bool)
+    keep[v2] = False
+    new_vertices = vertices[keep]
+
+    # Construire le remap
+    remap = np.full(len(vertices), -1, dtype=int)
+    remap[np.where(keep)[0]] = np.arange(len(new_vertices))
+
+    # Étape 4 — remapper les faces (cela peut introduire des -1)
+    new_faces = remap[faces]
+
+    # Étape 5 — éliminer les faces invalides (celles contenant -1)
+    mask = np.all(new_faces != -1, axis=1)
+    new_faces = new_faces[mask]
+
+    # Étape 6 — recréer le mesh final
+    new_mesh = trimesh.Trimesh(vertices=new_vertices,
+                               faces=new_faces,
+                               process=True)
+
+    return w12, neighbors_between, new_mesh
 
 
 
-def squeeze_compression(Object3D, compression_ratio=0.1):
-    new_obj = copy.deepcopy(Object3D)
-    vertices, faces, adjacency = new_obj.vertices, new_obj.faces, new_obj.build_adjacency()
-    target_vertex_count = int(len(vertices) * (1 - compression_ratio))
-    nb_collapses = len(vertices) - target_vertex_count
 
-    collapse_edges = select_edge_collapses(vertices, adjacency, nb_collapses)
+def squeeze_compression(obj: trimesh.Trimesh, compression_ratio=0.1):
+    new_obj = obj.copy()
+
+    # Nombre total de collapses à faire
+    target_vertex_count = int(len(new_obj.vertices) * (1 - compression_ratio))
+    nb_collapses = len(new_obj.vertices) - target_vertex_count
+
+    # Initial edge list (on la recalculera après chaque collapse)
+    collapse_edges = select_edge_collapses(new_obj, nb_collapses)
+
     collapse_info = []
 
-    for (v1, v2) in collapse_edges:
-        v2_pos = v2.as_array()
+    for _ in range(nb_collapses):
 
-        neighbors = new_obj.adjacency[v2]  # Use updated adjacency, not stale one
-        v2_est = mean_position(neighbors)
-        v2_est_pos = v2_est.as_array()
+        # ---------------------------------------------------------
+        # 1) Si plus de collapse planifiés → STOP
+        # ---------------------------------------------------------
+        if not collapse_edges:
+            break
 
-        v_err = v2_pos - v2_est_pos        # erreur (celle qu'on stocke)
-        
+        # prendre le prochain edge
+        v1, v2 = collapse_edges.pop(0)
 
-        w12, neighbors_between = apply_collapse(v1, v2, new_obj)
-        
-        collapse_info.append({"v_split": v1.as_array(), 
-                              "v_err": v_err, 
-                              "w12": w12,
-                              "neighbors_between": neighbors_between
-                              })
+        # ---------------------------------------------------------
+        # 2) Vérifier que v1 et v2 existent encore après remappings
+        # ---------------------------------------------------------
+        if v1 >= len(new_obj.vertices) or v2 >= len(new_obj.vertices):
+            # indices invalides → on recalcule la liste complète
+            collapse_edges = select_edge_collapses(new_obj, nb_collapses)
+            continue
+
+        # ---------------------------------------------------------
+        # 3) Calcule error & voisins V2
+        # ---------------------------------------------------------
+        v2_pos = new_obj.vertices[v2]
+
+        neighbors = new_obj.vertex_neighbors[v2]
+        if len(neighbors) == 0:
+            # vertice isolé : on saute
+            collapse_edges = select_edge_collapses(new_obj, nb_collapses)
+            continue
+
+        neighbors_vertices = [new_obj.vertices[n] for n in neighbors]
+        v2_est_pos = np.mean(neighbors_vertices, axis=0)
+        v_err_pos = v2_pos - v2_est_pos
+
+        # ---------------------------------------------------------
+        # 4) Collapse réel du mesh
+        # ---------------------------------------------------------
+        w12, neighbors_between, new_obj = apply_collapse(v1, v2, new_obj)
+
+        # ---------------------------------------------------------
+        # 5) Mémorisation du collapse
+        # ---------------------------------------------------------
+        collapse_info.append({
+            "v_split": new_obj.vertices[v1],
+            "v_err": v_err_pos,
+            "w12": w12,
+            "neighbors_between": neighbors_between
+        })
+
+        # ---------------------------------------------------------
+        # 6) Recalcul des edges restants → EVITE TOUT BUG D’INDICE
+        # ---------------------------------------------------------
+        collapse_edges = select_edge_collapses(new_obj, nb_collapses)
+
 
     return new_obj, collapse_info
 

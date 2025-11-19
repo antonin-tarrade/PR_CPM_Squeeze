@@ -1,32 +1,7 @@
 import numpy as np
-
-
-class Vertex:
-    def __init__(self, x, y, z):
-        self.x, self.y, self.z = x, y, z
-    def as_tuple(self):
-        return (self.x, self.y, self.z)
-    
-    def as_array(self):
-        return np.array(self.as_tuple())
-    
-    # hash and eq to use Vertex as dict keys
-    def __hash__(self):
-        return hash((self.x, self.y, self.z))
-    
-    # def __str__(self):
-    #     return f"Vertex({self.x}, {self.y}, {self.z})"
-    
-    def __eq__(self, other):
-        return (self.x, self.y, self.z) == (other.x, other.y, other.z)
-
-
-
-class Face:
-    def __init__(self, v1, v2, v3):
-        self.v1, self.v2, self.v3 = v1, v2, v3
-
-
+import random
+import plotly.graph_objects as go
+import trimesh
 
 def adjust_hex_color(hex_color, factor):
     hex_color = hex_color.lstrip("#")
@@ -66,3 +41,65 @@ def get_vertex_from_array(vertices, arr):
         if np.allclose(v.as_array(), arr, atol=1e-7):
             return v
     return None
+
+
+
+import plotly.graph_objects as go
+import random
+
+def show_obj(mesh: trimesh.Trimesh, title=None):
+    # Titre
+    if title is None:
+        title = f"3D Object : {mesh.metadata.get('name', 'Unnamed')}"
+
+    # Extraction des vertices
+    x, y, z = mesh.vertices[:, 0], mesh.vertices[:, 1], mesh.vertices[:, 2]
+
+    # Extraction des faces (déjà des indices)
+    i = mesh.faces[:, 0]
+    j = mesh.faces[:, 1]
+    k = mesh.faces[:, 2]
+
+    # Couleurs
+    main_color = "#B12CFF"
+    colors = [
+        adjust_hex_color(main_color, 0.9),
+        adjust_hex_color(main_color, 0.8),
+        adjust_hex_color(main_color, 1.1),
+        adjust_hex_color(main_color, 1.2),
+    ]
+
+    face_colors = [random.choice(colors) for _ in range(len(mesh.faces))]
+
+    # Création figure plotly
+    fig = go.Figure(
+        data=[
+            go.Mesh3d(
+                x=x, y=y, z=z,
+                i=i, j=j, k=k,
+                facecolor=face_colors,
+                flatshading=True,
+                opacity=1.0
+            )
+        ],
+        layout=go.Layout(
+            scene=dict(
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                zaxis=dict(visible=False)
+            ),
+            title=title,
+            annotations=[
+                dict(
+                    showarrow=False,
+                    text=f"Vertices: {len(mesh.vertices)} | Faces: {len(mesh.faces)}",
+                    xref="paper",
+                    yref="paper",
+                    x=0,
+                    y=0
+                )
+            ]
+        )
+    )
+
+    fig.show()
