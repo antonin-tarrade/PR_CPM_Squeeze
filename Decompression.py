@@ -46,9 +46,9 @@ def apply_vertex_split(Model, collapse_info, out):
 
 
     # The new vertex vdel is estimated as the average of its immediate neighbors a1, ...ak,which are known from connectivity decoding
-    # We now that vdel_neighbors are contained in the neighbors of vsplit
+
+
     # v_split_neighbors = ordered_neighbors
-    
     # vdel_neighbors = extract_vdel_neighbors(v_split_neighbors, w1, w2)
 
     # Calcul prédictif pour retrouver la position de vnew
@@ -97,4 +97,3 @@ def apply_vertex_split(Model, collapse_info, out):
 
             vnew.add_face(f)
             out.edit_face(faces.index(f), ObjaFace(f.v1, f.v2, f.v3))
-
