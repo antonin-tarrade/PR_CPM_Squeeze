@@ -28,14 +28,9 @@ def is_collapse_valid(v1, v2, collapsed_vertices, vertices):
     # Condition 2.2
     if id_w1 in w2.get_neighbors() or id_w2 in w1.get_neighbors():
         return False
-
-    fw1 = Face(v1.id, v2.id, id_w1, -1)
-    fw2 = Face(v1.id, v2.id, id_w2,-2)
-    if not(fw1 in v1.faces and fw1 in v2.faces and fw2 in v1.faces and fw2 in v2.faces):
-        return False
     
     # Condition 3
-    if any(v in collapsed_vertices for v in (v1neighbors + v2neighbors)):
+    if any(v_id in collapsed_vertices for v_id in (v1neighbors + v2neighbors)):
         return False
 
     return True
