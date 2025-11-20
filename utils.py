@@ -14,11 +14,9 @@ class Vertex:
         if face not in self.faces:
             self.faces.append(face)
             
-
     def remove_face(self, face):
         if face in self.faces:
             self.faces.remove(face)
-
 
     def get_neighbors(self):
         vid = self.id

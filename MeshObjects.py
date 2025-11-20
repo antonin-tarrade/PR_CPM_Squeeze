@@ -11,7 +11,6 @@ from obja.obja import Face as ObjaFace
 # Structures de base : Vertex, Face, Object3D
 
 class Object3D:
-
     def __init__(self, objFile, name=None):
         self.name = name or "Unknown"
         self.vertices = {}
@@ -189,6 +188,8 @@ class Object3D:
 
 
 # Classe pour gérer les LODs 
+
+
 class AObject3D:
     def __init__(self, objRef, name=None):
         self.name = name or "Unknown"
