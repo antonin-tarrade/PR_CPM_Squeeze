@@ -84,18 +84,17 @@ def apply_vertex_split(Model, collapse_info, out):
 
 
     # Mettre a jour les faces connectant vsplit à ses voisins entre w1 et w2
-    for fi,f in enumerate(faces):
-        if vsplit.id in [f.v1, f.v2, f.v3]:
-            other_vertices = [v for v in [f.v1, f.v2, f.v3] if v != vsplit.id]
-            if all(v in ordered_neighbors for v in other_vertices):
-                # Mettre à jour la face pour inclure vnew
-                if f.v1 == vsplit.id:
-                    f.v1 = vnew.id
-                elif f.v2 == vsplit.id:
-                    f.v2 = vnew.id
-                elif f.v3 == vsplit.id:
-                    f.v3 = vnew.id
+    for f in vsplit.faces:
+        other_vertices = [v for v in [f.v1, f.v2, f.v3] if v != vsplit.id]
+        if all(v in ordered_neighbors for v in other_vertices):
+            # Mettre à jour la face pour inclure vnew
+            if f.v1 == vsplit.id:
+                f.v1 = vnew.id
+            elif f.v2 == vsplit.id:
+                f.v2 = vnew.id
+            elif f.v3 == vsplit.id:
+                f.v3 = vnew.id
 
-                vnew.add_face(f)
-                out.edit_face(fi, ObjaFace(f.v1, f.v2, f.v3))
+            vnew.add_face(f)
+            out.edit_face(faces.index(f), ObjaFace(f.v1, f.v2, f.v3))
 
