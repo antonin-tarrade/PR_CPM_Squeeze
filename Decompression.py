@@ -87,10 +87,3 @@ def apply_vertex_split(Model, collapse_info):
 
                 vnew.add_face(f)
 
-
-
-    
-
-
-
-

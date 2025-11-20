@@ -160,6 +160,7 @@ class Object3D:
     def nb_faces(self):
         return len(self.faces)
 
+
     def export_as_obj(self, obj_name):
 
         # Path setup

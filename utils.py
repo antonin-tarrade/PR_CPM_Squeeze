@@ -97,6 +97,7 @@ def adjust_hex_color(hex_color, factor):
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
+
 def get_values_between(values, id_min, id_max):
     if id_max == id_min:
         return []
