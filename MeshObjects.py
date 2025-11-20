@@ -187,8 +187,6 @@ class Object3D:
             for face in self.faces:
                 f.write(f"f {index_map[face.v1]} {index_map[face.v2]} {index_map[face.v3]}\n")
 
-        print("OBJ exported to:", filepath)
-
 
 # Classe pour gérer les LODs 
 class AObject3D:
