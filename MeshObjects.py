@@ -4,6 +4,7 @@ from utils import *
 import numpy as np
 import random
 import plotly.graph_objects as go
+import os
 
 # Structures de base : Vertex, Face, Object3D
 
@@ -50,7 +51,7 @@ class Object3D:
 
 
 
-    def Show(self, title=None):
+    def Show(self, main_color, title=None):
         if title is None:
             title = f"3D Object : {self.name}"
         # Sanity checks
@@ -78,12 +79,11 @@ class Object3D:
 
 
         # Liste de couleurs autorisées
-        main_color = "#B12CFF"
         colors = [
-            adjust_hex_color(main_color, 0.9),   # 10% plus sombre
-            adjust_hex_color(main_color, 0.8),   # 20% plus sombre
-            adjust_hex_color(main_color, 1.1),   # 10% plus claire
-            adjust_hex_color(main_color, 1.2),   # 20% plus claire
+            adjust_hex_color(main_color, 0.8),   # 10% plus sombre
+            adjust_hex_color(main_color, 0.6),   # 20% plus sombre
+            adjust_hex_color(main_color, 1.2),   # 10% plus claire
+            adjust_hex_color(main_color, 1.4),   # 20% plus claire
         ]
 
         # Couleur aléatoire pour chaque face
@@ -120,10 +120,12 @@ class Object3D:
         )
         fig.show()
     
+
     def add_vertex(self, vertex):
         vertex.set_id(self.next_vertex_id)
         self.next_vertex_id += 1
         self.vertices[vertex.id] = vertex
+
 
     def add_vertex_at(self, vertex):
         if self.vertices.get(vertex.id) is None:
@@ -131,20 +133,16 @@ class Object3D:
         else :
             raise ValueError(f"Vertex with id={vertex.id} already exists in the model.")
     
-        
-        
 
     def del_vertex(self, vertexID):
         if self.vertices.get(vertexID) is not None:
            self.vertices.pop(vertexID)
 
 
-
-    
     def add_face(self, face):
         self.faces.append(face)
 
-    
+
     def del_face(self, face):
         if face in self.faces:
             self.faces.remove(face)
@@ -153,12 +151,42 @@ class Object3D:
                 vertex = self.vertices.get(v, None)
                 if vertex is not None:
                     vertex.remove_face(face)
-            
+
+
     def nb_vertices(self):
         return len(self.vertices)
-        
+
+
     def nb_faces(self):
         return len(self.faces)
+
+    def export_as_obj(self, obj_name):
+
+        # Path setup
+        folder = os.path.join("export", obj_name)
+        os.makedirs(folder, exist_ok=True)
+        filepath = os.path.join(
+            folder,
+            f"{obj_name}_v={self.nb_vertices()}_f={self.nb_faces()}.obj"
+        )
+
+        vertices = list(self.vertices.values())
+        index_map = {v.id: i + 1 for i, v in enumerate(vertices)}
+
+        with open(filepath, "w") as f:
+            # Vertices
+            for v in vertices:
+                f.write(f"v {v.array[0]} {v.array[1]} {v.array[2]}\n")
+
+            # Faces
+            for face in self.faces:
+                f.write(f"f {index_map[face.v1]} {index_map[face.v2]} {index_map[face.v3]}\n")
+
+        print("OBJ exported to:", filepath)
+
+
+
+
 
 
 # Classe pour gérer les LODs 
@@ -196,9 +224,9 @@ class AObject3D:
             M_n = squeeze_decompression(M_n, info)
         return M_n
 
-    def show_lods(self):
+    def show_lods(self, color):
         for idx, lod in enumerate(self.model_lods):
-            lod.Show(f'LOD {idx + 1} of {self.name}')
+            lod.Show(color, f'LOD {idx + 1} of {self.name}')
 
-    def show_last_lod(self):
-        self.get_last_lod().Show(f'Last LOD of {self.name}')
+    def show_last_lod(self, color):
+        self.get_last_lod().Show(color, f'Last LOD of {self.name}')
