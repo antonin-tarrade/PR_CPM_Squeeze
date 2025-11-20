@@ -164,9 +164,10 @@ class Object3D:
         return len(self.faces)
 
 
-    def export_as_obj(self, obj_name):
+    def export_as_obj(self):
 
         # Path setup
+        obj_name = self.name if self.name is not None else "XXX"
         folder = os.path.join("export", obj_name)
         os.makedirs(folder, exist_ok=True)
         filepath = os.path.join(
@@ -217,7 +218,8 @@ class AObject3D:
         if nb_decompressions is None:
             nb_decompressions = self.get_nb_of_lods()
 
-        M_n = self.get_last_lod() 
+        M_n = self.get_last_lod()
+        M_n.export_as_obj()
 
         # Reconstruction du M0 dans le obja
         for v in M_n.vertices.values():
@@ -230,7 +232,9 @@ class AObject3D:
         for n in range(nb_decompressions):
             info = self.collapse_info[-(n+1)]
             M_n = squeeze_decompression(M_n, info, out)
+            M_n.export_as_obj()
         return M_n
+    
 
     def show_lods(self, color):
         for idx, lod in enumerate(self.model_lods):
