@@ -6,6 +6,8 @@ import random
 import plotly.graph_objects as go
 import os
 
+from obja.obja import Output
+from obja.obja import Face as ObjaFace
 # Structures de base : Vertex, Face, Object3D
 
 class Object3D:
@@ -186,10 +188,6 @@ class Object3D:
         print("OBJ exported to:", filepath)
 
 
-
-
-
-
 # Classe pour gérer les LODs 
 class AObject3D:
     def __init__(self, objRef, name=None):
@@ -212,17 +210,25 @@ class AObject3D:
             self.model_lods.append(obj)
         return self.model_lods, self.collapse_info
     
-    def decompress(self, nb_decompressions = None):
+    def decompress(self, nb_decompressions = None, out : Output = None):
         if len(self.model_lods) == 0:
             return self.model_ref
         if nb_decompressions is None:
             nb_decompressions = self.get_nb_of_lods()
 
-        M_n = self.get_last_lod()
+        M_n = self.get_last_lod() 
 
+        # Reconstruction du M0 dans le obja
+        for v in M_n.vertices.values():
+            out.add_vertex(v.id, v.array)
+
+        for fi,f in enumerate(M_n.faces):
+            out.add_face(fi, ObjaFace(f.v1, f.v2, f.v3))
+
+        # Decompression
         for n in range(nb_decompressions):
             info = self.collapse_info[-(n+1)]
-            M_n = squeeze_decompression(M_n, info)
+            M_n = squeeze_decompression(M_n, info, out)
         return M_n
 
     def show_lods(self, color):

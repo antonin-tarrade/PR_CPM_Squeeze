@@ -87,7 +87,7 @@ def squeeze_compression(object3D, compression_ratio=0.1):
     collapse_info = []
     cut_ids = []
 
-    print(f"Selected {len(collapse_edges)} edges for collapse.")
+    #print(f"Selected {len(collapse_edges)} edges for collapse.")
 
     for (v1, v2) in collapse_edges:
         

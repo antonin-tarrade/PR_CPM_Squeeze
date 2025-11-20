@@ -2,13 +2,16 @@ import numpy as np
 import copy
 from utils import *
 
+from obja.obja import Output
+from obja.obja import Face as ObjaFace
 
-def squeeze_decompression(Mi_minus_1, infos):
+def squeeze_decompression(Mi_minus_1, infos, out):
     Mi = copy.deepcopy(Mi_minus_1)
-    print(f"Starting decompression: there will be {len(infos)} vertex splits to apply.")
+    #print(f"Starting decompression: there will be {len(infos)} vertex splits to apply.")
     for info in reversed(infos):
-        apply_vertex_split(Mi, info)
+        apply_vertex_split(Mi, info, out)
     return Mi
+
 
 def extract_vdel_neighbors(ordered_neighbors, w1, w2): 
     idx1 = ordered_neighbors.index(w1.id) 
@@ -20,12 +23,13 @@ def extract_vdel_neighbors(ordered_neighbors, w1, w2):
     return neighbors_between
 
 
-def apply_vertex_split(Model, collapse_info):
+def apply_vertex_split(Model, collapse_info, out):
     # Extraire les données nécessaires
     vertices = Model.vertices
     faces = Model.faces
     vsplit = vertices.get(collapse_info['v_split'], None)
     vdel_id = collapse_info['vdel_id']
+
     if vsplit is None:
         raise ValueError(f"Could not find vsplit in vertices. vsplit id={collapse_info['v_split']}")
     
@@ -49,8 +53,6 @@ def apply_vertex_split(Model, collapse_info):
 
     # Calcul prédictif pour retrouver la position de vnew
     vdel_neighbors_vertices = [vertices[nid] for nid in ordered_neighbors]
-
-
     bary = mean_position(vdel_neighbors_vertices)
 
     # Ajout du nouveau sommet
@@ -59,8 +61,12 @@ def apply_vertex_split(Model, collapse_info):
     vnew.set_id(vdel_id)
     Model.add_vertex_at(vnew)
 
+    # Ajout dans le obja
+    out.add_vertex(vnew.id, vnew.array)
+    
+    
     # Recréer les 2 faces supprimées pendant la compression
-    f1 = Face(vsplit.id, w1.id, vnew.id,Model.nb_faces())
+    f1 = Face(vsplit.id, w1.id, vnew.id, Model.nb_faces())
     Model.add_face(f1)
     Model.vertices[vsplit.id].add_face(f1)
     Model.vertices[w1.id].add_face(f1)
@@ -71,9 +77,14 @@ def apply_vertex_split(Model, collapse_info):
     Model.vertices[vsplit.id].add_face(f2)
     Model.vertices[w2.id].add_face(f2)
     Model.vertices[vnew.id].add_face(f2)
+    
+    # Ajout dans le obja
+    out.add_face(f1.id, ObjaFace(f1.v1, f1.v2, f1.v3))
+    out.add_face(f2.id, ObjaFace(f2.v1, f2.v2, f2.v3))
+
 
     # Mettre a jour les faces connectant vsplit à ses voisins entre w1 et w2
-    for f in faces:
+    for fi,f in enumerate(faces):
         if vsplit.id in [f.v1, f.v2, f.v3]:
             other_vertices = [v for v in [f.v1, f.v2, f.v3] if v != vsplit.id]
             if all(v in ordered_neighbors for v in other_vertices):
@@ -86,4 +97,5 @@ def apply_vertex_split(Model, collapse_info):
                     f.v3 = vnew.id
 
                 vnew.add_face(f)
+                out.edit_face(fi, ObjaFace(f.v1, f.v2, f.v3))
 
