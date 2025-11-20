@@ -18,7 +18,9 @@ def is_collapse_valid(v1, v2, collapsed_vertices, vertices):
     v1neighbors = v1.get_neighbors()
     v2neighbors = v2.get_neighbors()
     common_neighbors = set(v1neighbors).intersection(set(v2neighbors))
-    if len(common_neighbors) != 2:
+    facev2 = [f.id for f in v2.faces]
+    facev1 = [f.id for f in v1.faces]
+    if len(set(facev2).intersection(facev1)) != 2 or len(common_neighbors) != 2:
         return False
     
     id_w1, id_w2 = common_neighbors
@@ -67,6 +69,11 @@ def select_edge_collapses(vertices, nb_collapses):
 def apply_collapse(v1, v2, obj):
     faces_to_remove = []
     cut_ids = []
+    facev2 = [f.id for f in v2.faces]
+    facev1 = [f.id for f in v1.faces]
+    if len(set(facev2).intersection(facev1)) < 2 :  
+        print(f"faces de v2 : {facev2} face de v1 : {facev1}")
+        print(f"Voisins : {set(v2.get_neighbors()).intersection(v1.get_neighbors())}")
 
     for f in v2.faces:
         if f in v1.faces :
