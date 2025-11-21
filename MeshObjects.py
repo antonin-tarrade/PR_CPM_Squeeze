@@ -87,6 +87,17 @@ class Object3D:
             adjust_hex_color(main_color, 1.4),   # 20% plus claire
         ]
 
+
+        # Couleurs pour test
+        colors = [
+            "#FF0000",  # Rouge orangé
+            "#FFFFFF",
+            "#FFFFFF",
+            "#FFFFFF",
+            "#FFFFFF",
+            "#FFFFFF",
+        ]
+
         # Couleur aléatoire pour chaque face avec une seed fixe pour la reproductibilité
         random.seed(42)
         face_colors = [random.choice(colors) for _ in self.faces]
