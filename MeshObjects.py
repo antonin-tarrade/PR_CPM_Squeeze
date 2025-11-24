@@ -1,14 +1,13 @@
-from Compression import squeeze_compression
-from Decompression import squeeze_decompression
-from utils import *
 import numpy as np
 import random
 import plotly.graph_objects as go
 import os
-
+from Compression import squeeze_compression
+from Decompression import squeeze_decompression
+from utils import *
 from obja.obja import Output
 from obja.obja import Face as ObjaFace
-# Structures de base : Vertex, Face, Object3D
+
 
 class Object3D:
     def __init__(self, objFile, name=None):
@@ -34,23 +33,18 @@ class Object3D:
                 parts = line.split()
                 idxs = []
                 for p in parts[1:]:
-                    # token may be 'v', 'v/t' or 'v/t/n' — take the vertex index before any '/'
                     try:
                         vi = int(p.split('/')[0]) - 1
                     except Exception:
-                        # skip malformed token
                         continue
                     idxs.append(vi)
                 if len(idxs) >= 3:
                     new_face = Face(*idxs[:3], len(self.faces))
                     self.add_face(new_face)
-                    # Link face to vertices
                     for vi in idxs[:3]:
                         vertex = self.vertices.get(vi, None)
                         if vertex is not None:
                             vertex.add_face(new_face)
-
-
 
     def Show(self, main_color, title=None):
         if title is None:
@@ -63,42 +57,24 @@ class Object3D:
             print("Warning: object has no faces to display")
             return
 
-        # Build an ordered list of vertices and coordinate arrays
         vertices_list = list(self.vertices.values())
         x = [float(v.array[0]) for v in vertices_list]
         y = [float(v.array[1]) for v in vertices_list]
         z = [float(v.array[2]) for v in vertices_list]
 
-        # Map vertex id -> index in the x/y/z arrays
         index_map = {v.id: idx for idx, v in enumerate(vertices_list)}
 
-        # Build face index arrays (i, j, k) referencing positions in x/y/z
         i = [index_map.get(f.v1, 0) for f in self.faces]
         j = [index_map.get(f.v2, 0) for f in self.faces]
         k = [index_map.get(f.v3, 0) for f in self.faces]
 
-
-
-        # Liste de couleurs autorisées
         colors = [
-            adjust_hex_color(main_color, 0.8),   # 10% plus sombre
-            adjust_hex_color(main_color, 0.6),   # 20% plus sombre
-            adjust_hex_color(main_color, 1.2),   # 10% plus claire
-            adjust_hex_color(main_color, 1.4),   # 20% plus claire
+            adjust_hex_color(main_color, 0.8),
+            adjust_hex_color(main_color, 0.6),
+            adjust_hex_color(main_color, 1.2),
+            adjust_hex_color(main_color, 1.4),
         ]
 
-
-        # Couleurs pour test
-        colors = [
-            "#FF0000",  # Rouge orangé
-            "#FFFFFF",
-            "#FFFFFF",
-            "#FFFFFF",
-            "#FFFFFF",
-            "#FFFFFF",
-        ]
-
-        # Couleur aléatoire pour chaque face avec une seed fixe pour la reproductibilité
         random.seed(42)
         face_colors = [random.choice(colors) for _ in self.faces]
 
@@ -133,12 +109,10 @@ class Object3D:
         )
         fig.show()
     
-
     def add_vertex(self, vertex):
         vertex.set_id(self.next_vertex_id)
         self.next_vertex_id += 1
         self.vertices[vertex.id] = vertex
-
 
     def add_vertex_at(self, vertex):
         if self.vertices.get(vertex.id) is None:
@@ -146,15 +120,12 @@ class Object3D:
         else :
             raise ValueError(f"Vertex with id={vertex.id} already exists in the model.")
     
-
     def del_vertex(self, vertexID):
         if self.vertices.get(vertexID) is not None:
            self.vertices.pop(vertexID)
 
-
     def add_face(self, face):
         self.faces.append(face)
-
 
     def del_face(self, face):
         if face in self.faces:
@@ -165,14 +136,11 @@ class Object3D:
                 if vertex is not None:
                     vertex.remove_face(face)
 
-
     def nb_vertices(self):
         return len(self.vertices)
 
-
     def nb_faces(self):
         return len(self.faces)
-
 
     def export_as_obj(self):
 
@@ -196,9 +164,6 @@ class Object3D:
             # Faces
             for face in self.faces:
                 f.write(f"f {index_map[face.v1]} {index_map[face.v2]} {index_map[face.v3]}\n")
-
-
-# Classe pour gérer les LODs 
 
 
 class AObject3D:
@@ -245,7 +210,6 @@ class AObject3D:
             M_n.export_as_obj()
         return M_n
     
-
     def show_lods(self, color):
         for idx, lod in enumerate(self.model_lods):
             lod.Show(color, f'LOD {idx + 1} of {self.name}')

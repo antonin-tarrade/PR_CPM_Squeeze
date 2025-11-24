@@ -14,7 +14,7 @@ def is_collapse_valid(v1, v2, collapsed_vertices, vertices):
     if v1.id in collapsed_vertices or v2.id in collapsed_vertices:
         return False
     
-    # Condition 2
+    # Condition 2.1
     v1neighbors = v1.get_neighbors()
     v2neighbors = v2.get_neighbors()
     common_neighbors = set(v1neighbors).intersection(set(v2neighbors))
@@ -61,8 +61,6 @@ def select_edge_collapses(vertices, nb_collapses):
             collapsed_vertices.update([v1.id, v2.id])
         if len(selected) >= nb_collapses:
             break
-    
-
     return selected
 
 
@@ -97,7 +95,6 @@ def apply_collapse(v1, v2, obj):
     return cut_ids
 
 
-
 def squeeze_compression(object3D, compression_ratio=0.1):
     new_obj = copy.deepcopy(object3D)
     vertices = new_obj.vertices
@@ -107,8 +104,6 @@ def squeeze_compression(object3D, compression_ratio=0.1):
     collapse_edges = select_edge_collapses(vertices, nb_collapses)
     collapse_info = []
     cut_ids = []
-
-    #print(f"Selected {len(collapse_edges)} edges for collapse.")
 
     for (v1, v2) in collapse_edges:
         
@@ -140,4 +135,3 @@ def squeeze_compression(object3D, compression_ratio=0.1):
 
 
     return new_obj, collapse_info
-

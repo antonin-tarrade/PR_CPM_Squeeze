@@ -37,7 +37,6 @@ class Vertex:
         if not next_of:
             return []
 
-        # -------- try CLOSED ring first --------
         start = next(iter(next_of.keys()))
         ordered = []
         cur = start
@@ -49,13 +48,12 @@ class Vertex:
             cur = next_of.get(cur, None)
 
             if cur is None:
-                break                     # open boundary
+                break      
             if cur == start:
-                return ordered            # closed ring
+                return ordered       
             if cur in visited:
-                break                     # corrupted but closed attempt failed
+                break       
 
-        # -------- open boundary fallback --------
         boundary_starts = [u for u in next_of.keys() if u not in prev_of]
         if boundary_starts:
             start = boundary_starts[0]
@@ -69,7 +67,6 @@ class Vertex:
             cur = next_of.get(cur, None)
 
         return ordered
-
 
 
 class Face:
@@ -87,13 +84,11 @@ def adjust_hex_color(hex_color, factor):
     g = int(hex_color[2:4], 16)
     b = int(hex_color[4:6], 16)
 
-    # application du facteur
     r = min(int(r * factor), 255)
     g = min(int(g * factor), 255)
     b = min(int(b * factor), 255)
 
     return f"#{r:02X}{g:02X}{b:02X}"
-
 
 
 def get_values_between(values, id_min, id_max):
@@ -103,9 +98,7 @@ def get_values_between(values, id_min, id_max):
     if id_min < id_max:
         return values[id_min + 1:id_max]
 
-    # Cas circulaire
     return values[id_min + 1:] + values[:id_max]
-
 
 
 def mean_position(vertices):
